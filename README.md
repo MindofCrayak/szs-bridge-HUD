@@ -1,12 +1,6 @@
-<div align="center">
-<img width="1200" height="475" alt="GHBanner" src="https://ai.google.dev/static/site-assets/images/share-ais-513315318.png" />
-</div>
+# Session Zero Solutions Command HUD
 
-# Run and deploy your AI Studio app
-
-This contains everything you need to run your app locally.
-
-View your app in AI Studio: https://ai.studio/apps/9dcb0da1-7723-494a-a958-fb99877e715e
+React/TypeScript client HUD backed by a Google Apps Script web app. Configure the Apps Script endpoint and Alfred Gemini key locally before running.
 
 ## Run Locally
 
@@ -15,6 +9,16 @@ View your app in AI Studio: https://ai.studio/apps/9dcb0da1-7723-494a-a958-fb998
 
 1. Install dependencies:
    `npm install`
-2. Set the `GEMINI_API_KEY` in [.env.local](.env.local) to your Gemini API key
+2. Configure these variables in a local `.env` file:
+   - `VITE_GEMINI_API_KEY` for Alfred's Gemini connection
+   - `VITE_APPS_SCRIPT_URL` for the Apps Script Web App URL
+   - `VITE_API_SECRET_KEY` for the HUD-state request token
+
+   Vite-prefixed values are included in browser code. Do not use privileged secrets as `VITE_*` values; use a server-side proxy for privileged credentials.
 3. Run the app:
    `npm run dev`
+
+## Validation
+
+- `npm run lint`
+- `npm run build`

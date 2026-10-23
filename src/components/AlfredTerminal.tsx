@@ -23,8 +23,12 @@ export const AlfredTerminal = forwardRef<AlfredTerminalHandle, AlfredTerminalPro
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const messagesRef = useRef<ChatMessage[]>([]);
+  const pendingExternalCommandsRef = useRef<string[]>([]);
+  const activeUnitIdRef = useRef(activeUnit?.id);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const isTypingRef = useRef(false);
+  activeUnitIdRef.current = activeUnit?.id;
   const complianceStatus = activeUnit
     ? [
         `Root Folder: ${activeUnit.RootFolderID?.trim() ? 'Found' : 'Missing'}`,
@@ -46,8 +50,15 @@ export const AlfredTerminal = forwardRef<AlfredTerminalHandle, AlfredTerminalPro
         `Current milestone: ${activeUnit.currentMilestone || 'Not recorded'}`,
         `Milestones completed: ${activeUnit.completedMilestones}`,
         `Milestones total: ${activeUnit.totalMilestones}`,
+        `Google Group Email: ${activeUnit.googleGroupEmail || 'Not recorded'}`,
         `Chat Space URL: ${activeUnit.chatSpaceUrl || 'Not recorded'}`,
         `Client notes URL: ${activeUnit.notesDocUrl || 'Not recorded'}`,
+        `Oracle case file URL: ${activeUnit.caseFileJsonUrl || 'Not recorded'}`,
+        `Root Folder ID: ${activeUnit.RootFolderID?.trim() || 'Missing'}`,
+        `MSA Document ID: ${activeUnit.MSA_DocID?.trim() || 'Missing'}`,
+        `Project Folder ID: ${activeUnit.ProjectFolderID?.trim() || 'Missing'}`,
+        `SOW Document ID: ${activeUnit.SOW_DocID?.trim() || 'Missing'}`,
+        `Meeting Notes Folder ID: ${activeUnit.MeetingNotes_DriveFolderID?.trim() || 'Missing'}`,
       ].join('\n')
     : 'No active client is selected.';
 
@@ -56,14 +67,22 @@ export const AlfredTerminal = forwardRef<AlfredTerminalHandle, AlfredTerminalPro
   }, [messages, isTyping]);
 
   useEffect(() => {
+    messagesRef.current = [];
+    pendingExternalCommandsRef.current = [];
     setMessages([]);
     setError(null);
   }, [activeUnit?.id]);
 
   const sendMessage = useCallback(async (rawText: string) => {
     const text = rawText.trim();
-    if (!text || isTypingRef.current) return;
-    const conversation = [...messages, { role: 'user' as const, text }];
+    if (!text) return;
+    if (isTypingRef.current) {
+      pendingExternalCommandsRef.current.push(text);
+      return;
+    }
+    const conversation = [...messagesRef.current, { role: 'user' as const, text }];
+    const requestClientId = activeUnit?.id;
+    messagesRef.current = conversation;
     setMessages(conversation);
     setError(null);
     isTypingRef.current = true;
@@ -81,13 +100,18 @@ export const AlfredTerminal = forwardRef<AlfredTerminalHandle, AlfredTerminalPro
           parts: [{ text: message.text }],
         })),
         config: {
-          systemInstruction: `You are Alfred, chief of staff and tactical steward for Session Zero Solutions, a digital operations consultancy led by Drake Austin. Address him as Master Drake, Captain, or Sir when natural.
-Be crisp, pragmatic, polished, candid, and concise, with occasional understated wit. Avoid corporate jargon and filler. Frame technical operations as maintaining a well-run command bridge or client dossier. Use Session Zero terminology such as Digital Pebbles, Digital Heraldry, and the Google Iceberg when useful; do not force metaphors.
-Help manage client digital infrastructure, organize client dossiers, review milestones, identify operational blockers, and draft practical next steps. Use only supplied facts. Never invent client data, document IDs, compliance evidence, or completed work; clearly state when something is missing or unavailable.
+          systemInstruction: `You are Alfred, chief of staff and tactical steward for Session Zero Solutions, a DBA under DrakeCo LLC, led by Drake Austin. Address the principal only as Master Drake or Sir.
+Be crisp, pragmatic, polished, candid, and concise, with understated humor and quiet technical authority. Avoid corporate jargon and filler. Treat infrastructure as a well-managed estate or command bridge; use Session Zero terms such as Digital Pebbles when useful without forcing metaphors.
+Coordinate operational telemetry, compliance, API routing, and system hygiene. Keep the personas distinct: Pamela Isley handles intake/graduation and Drive provisioning; Oracle handles marketing intelligence; Dolores Herbig handles tasks/workspaces; Vala Mal Doran handles milestone billing; Daisy Adare handles offboarding.
+Macro pad mapping: Q = pre-fill Gmail, W = open Chat Space, E = schedule Meet, A = new project onboarding, S = draft milestone invoice, D = Google Tasks checklist, Z = Oracle scan/sourcebook, X = meeting notes, C = Alfred compliance check.
+The database stages are 00 Discovery, 01 Pitch Staged, 02 Contract & Inception, 03 Deep Intelligence, 04 Session Zero Kickoff, 05 Builds, 06 Mid-Flight Review, 07 Final Staging, 08 Liftoff, and 09 Sunset / Retainer. The HUD groups these into Intake (00–01), Session Zero (02–04), Active Sprints (05–07), and Liftoff (08–09).
+Identity conventions: ClientID is a three-letter company acronym with a numeric suffix for collisions; ProjectID is {ClientID}-{Number}; InvoiceID is INV-{ClientID}-{Number}; Google Groups use client-{clientid}@sessionzero.solutions. Use supplied IDs only; never mint or imply an ID exists unless an authorized workflow has done so.
+Vala's stated rate rubric is $85/hr Normal, $115/hr Premium, $65/hr Reduced, and $2,500 Blueprint, with milestone invoices typically divided into thirds. No client rate tier is supplied unless present below; never infer a tier or calculate an invoice as approved without it.
+Use only supplied facts. Never invent client data, document IDs, compliance evidence, completed work, or external actions. Clearly state when something is missing or a connector is unavailable. Do not claim Oracle has scraped data or updated a Drive sourcebook unless the integration confirms it.
 Active client context:
 ${clientContext}
 Compliance Status for this client: ${complianceStatus}
-Keep responses tactical and helpful.`,
+Keep responses tactical, brief, and helpful.`,
         },
       });
       const responseText = response.text?.trim();
@@ -95,17 +119,32 @@ Keep responses tactical and helpful.`,
         throw new Error('Alfred returned an empty response. Please try again.');
       }
 
-      setMessages((previous) => [...previous, { role: 'model', text: responseText }]);
+      if (activeUnitIdRef.current === requestClientId) {
+        setMessages((previous) => {
+          const nextMessages: ChatMessage[] = [...previous, { role: 'model', text: responseText }];
+          messagesRef.current = nextMessages;
+          return nextMessages;
+        });
+      }
     } catch (requestError) {
-      const message = requestError instanceof Error
-        ? requestError.message
-        : 'Alfred could not complete the request. Please try again.';
-      setError(message);
+      if (activeUnitIdRef.current === requestClientId) {
+        const message = requestError instanceof Error
+          ? requestError.message
+          : 'Alfred could not complete the request. Please try again.';
+        setError(message);
+      }
     } finally {
       isTypingRef.current = false;
       setIsTyping(false);
     }
-  }, [activeUnit, messages]);
+  }, [activeUnit]);
+
+  useEffect(() => {
+    if (!isTyping && pendingExternalCommandsRef.current.length > 0) {
+      const nextCommand = pendingExternalCommandsRef.current.shift();
+      if (nextCommand) void sendMessage(nextCommand);
+    }
+  }, [isTyping, sendMessage]);
 
   useImperativeHandle(ref, () => ({
     sendMessage: (text: string) => { void sendMessage(text); },

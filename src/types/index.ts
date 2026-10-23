@@ -16,8 +16,11 @@ export interface ClientUnit {
   roadblock?: string;
   notes?: string;
   contactEmail?: string;
+  googleGroupEmail?: string;
   chatSpaceUrl?: string;
   notesDocUrl?: string;
+  caseFileJsonUrl?: string;
+  driveFolderUrl?: string;
   RootFolderID?: string | null;
   MSA_DocID?: string | null;
   ProjectFolderID?: string | null;

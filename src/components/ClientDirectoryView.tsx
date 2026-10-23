@@ -39,7 +39,7 @@ export const ClientDirectoryView: React.FC<ClientDirectoryViewProps> = ({
       ...client,
       completedMilestones,
       currentMilestone: projectComplete ? 'Project complete' : `Milestone ${completedMilestones + 1}`,
-      pipelineStage: projectComplete ? '04: Liftoff' : client.pipelineStage,
+      pipelineStage: projectComplete ? '08: Liftoff' : client.pipelineStage,
       posX: projectComplete ? 785 : client.posX,
     };
     onUpdateUnit(updatedClient);

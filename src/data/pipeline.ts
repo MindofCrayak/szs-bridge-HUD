@@ -1,0 +1,73 @@
+export interface PipelineColumn {
+  id: string;
+  title: string;
+  badge: string;
+  stages: string[];
+  defaultStage: string;
+}
+
+export const PIPELINE_COLUMNS: PipelineColumn[] = [
+  {
+    id: 'intake',
+    title: 'INTAKE',
+    badge: 'LEADS',
+    stages: ['00: Discovery', '01: Pitch Staged'],
+    defaultStage: '01: Pitch Staged',
+  },
+  {
+    id: 'session-zero',
+    title: 'SESSION ZERO',
+    badge: 'DISCOVERY',
+    stages: ['02: Contract & Inception', '03: Deep Intelligence', '04: Session Zero Kickoff'],
+    defaultStage: '04: Session Zero Kickoff',
+  },
+  {
+    id: 'active-sprints',
+    title: 'ACTIVE SPRINTS',
+    badge: 'DELIVERY',
+    stages: ['05: Builds', '06: Mid-Flight Review', '07: Final Staging'],
+    defaultStage: '05: Builds',
+  },
+  {
+    id: 'liftoff',
+    title: 'LIFTOFF',
+    badge: 'COMPLETE',
+    stages: ['08: Liftoff', '09: Sunset / Retainer'],
+    defaultStage: '08: Liftoff',
+  },
+];
+
+const LEGACY_STAGE_MAP: Record<string, string> = {
+  '01: intake': '00: Discovery',
+  '01: vibecheck': '01: Pitch Staged',
+  '02: session zero': '04: Session Zero Kickoff',
+  '03: strategy & blueprint': '03: Deep Intelligence',
+  '03: active sprints': '05: Builds',
+  '04: build sprint 1': '05: Builds',
+  '05: build sprint 2': '05: Builds',
+  '06: mid-flight review': '06: Mid-Flight Review',
+  '07: final staging': '07: Final Staging',
+  '04: liftoff': '08: Liftoff',
+  '09: sunset / retainer': '09: Sunset / Retainer',
+};
+
+export const normalizePipelineStage = (stage: string): string => {
+  const normalized = stage.trim();
+  return LEGACY_STAGE_MAP[normalized.toLowerCase()] || normalized;
+};
+
+export const getPipelineColumnIndex = (stage: string): number => {
+  const canonicalStage = normalizePipelineStage(stage);
+  const stageNumber = Number.parseInt(canonicalStage.split(':', 1)[0], 10);
+  if (!Number.isFinite(stageNumber)) return 0;
+  if (stageNumber <= 1) return 0;
+  if (stageNumber <= 4) return 1;
+  if (stageNumber <= 7) return 2;
+  return 3;
+};
+
+export const getPipelineColumnForStage = (stage: string): PipelineColumn =>
+  PIPELINE_COLUMNS[getPipelineColumnIndex(stage)];
+
+export const getPipelineStageForColumn = (columnIndex: number): string =>
+  PIPELINE_COLUMNS[Math.min(PIPELINE_COLUMNS.length - 1, Math.max(0, columnIndex))].defaultStage;

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { API_URL } from '../data/api';
+import { API_SECRET_KEY, API_URL } from '../data/api';
 import { ClientUnit } from '../types';
 
 interface ComplianceModalProps {
@@ -28,8 +28,15 @@ export const ComplianceModal: React.FC<ComplianceModalProps> = ({ activeUnit, on
     setSuccess(false);
 
     try {
-      const response = await fetch(API_URL, {
+      if (!API_SECRET_KEY) {
+        throw new Error('Set VITE_API_SECRET_KEY in the root .env file and restart the development server.');
+      }
+      const requestUrl = new URL(API_URL);
+      requestUrl.searchParams.set('secret', API_SECRET_KEY);
+
+      const response = await fetch(requestUrl, {
         method: 'POST',
+        redirect: 'follow',
         body: JSON.stringify({
           action: 'RUN_PROVISIONING',
           clientData: activeUnit,

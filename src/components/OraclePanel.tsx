@@ -21,6 +21,9 @@ interface OraclePanelProps {
 }
 
 const MACROS = [
+  { command: '/recon', label: 'RECON', icon: 'fa-crosshairs' },
+  { command: '/bracket', label: 'BRACKET', icon: 'fa-code-branch' },
+  { command: '/whitespace', label: 'WHITESPACE', icon: 'fa-expand' },
   { command: '/finder', label: 'FINDER', icon: 'fa-magnifying-glass' },
   { command: '/tracker', label: 'TRACKER', icon: 'fa-crosshairs' },
   { command: '/gbp-audit', label: 'GBP AUDIT', icon: 'fa-location-dot' },
@@ -205,10 +208,16 @@ export const OraclePanel: React.FC<OraclePanelProps> = ({
         return;
       }
       case '/finder':
+      case '/recon':
         writeOutput(activeUnit
-          ? `Finder invoked for ${activeUnit.name}. Discovery connector is not configured; add a candidate with /target <name or url>.`
-          : 'Select an active client to use Finder.');
-        onLogTerminal(`Oracle Finder invoked${activeUnit ? ` for ${activeUnit.name}` : ''}; discovery connector is not configured.`, 'action');
+          ? `Recon invoked for ${activeUnit.name}. Discovery connector is not configured; add a candidate with /target <name or url>.`
+          : 'Select an active client to use Oracle recon.');
+        onLogTerminal(`Oracle recon invoked${activeUnit ? ` for ${activeUnit.name}` : ''}; discovery connector is not configured.`, 'action');
+        return;
+      case '/bracket':
+      case '/whitespace':
+        writeOutput(`${verb.slice(1)} invoked. The intelligence connector is not configured; no external data was fetched.`);
+        onLogTerminal(`Oracle ${verb.slice(1)} invoked; intelligence connector is not configured.`, 'action');
         return;
       case '/tracker': {
         const verifiableTarget = selectedTarget?.status === 'VERIFIED'

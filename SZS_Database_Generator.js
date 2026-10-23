@@ -1,44 +1,51 @@
 function setupSZSDatabase() {
-  const spreadsheet = SpreadsheetApp.create('SZS CRM Master Database');
-  const clientsSheet = spreadsheet.getSheets()[0];
-  clientsSheet.setName('Clients');
+  var lock = LockService.getScriptLock();
+  lock.waitLock(30000);
 
-  const headers = [
-    'ClientID',
-    'ClientName',
-    'ContactEmail',
-    'Archetype',
-    'PipelineStage',
-    'ActiveRoadblock',
-    'ContractValue',
-    'DepositPaid',
-    'CurrentMilestone',
-    'CompletedMilestones',
-    'TotalMilestones',
-    'DriveFolderUrl',
-    'ChatSpaceUrl',
-    'NotesDocUrl',
-  ];
+  try {
+    const spreadsheet = SpreadsheetApp.create('SZS CRM Master Database');
+    const clientsSheet = spreadsheet.getSheets()[0];
+    clientsSheet.setName('Clients');
 
-  const clients = [
-    ['C-101', 'Jake', '', 'Tradesman', '01: Intake', 'Confirm project scope', 6500, false, 'Initial consultation', 0, 4, '', '', ''],
-    ['C-102', 'Marco', '', 'Tech-Savvy Game Dev', '03: Active Sprints', 'Review sprint priorities', 12500, true, 'Gameplay prototype', 2, 4, '', '', ''],
-    ['C-103', 'Cassie', '', 'Veterinarian', '02: Session Zero', 'Gather practice requirements', 8400, false, 'Discovery session', 1, 5, '', '', ''],
-    ['C-104', 'Rachel', '', 'Dance Program Owner', '01: Intake', 'Schedule onboarding call', 7200, false, 'Initial consultation', 0, 4, '', '', ''],
-    ['C-105', 'Tobias', '', 'RPG Game Dev / Stage Manager', '03: Active Sprints', 'Approve production timeline', 15800, true, 'Production planning', 2, 5, '', '', ''],
-    ['C-106', 'Ax', '', 'Innovative Tech Startup', '02: Session Zero', 'Confirm launch objectives', 18400, false, 'Discovery session', 1, 5, '', '', ''],
-  ];
+    const headers = [
+      'ClientID',
+      'ClientName',
+      'ContactEmail',
+      'Archetype',
+      'PipelineStage',
+      'ActiveRoadblock',
+      'ContractValue',
+      'DepositPaid',
+      'CurrentMilestone',
+      'CompletedMilestones',
+      'TotalMilestones',
+      'DriveFolderUrl',
+      'ChatSpaceUrl',
+      'NotesDocUrl',
+    ];
 
-  clientsSheet.getRange(1, 1, 1, headers.length).setValues([headers]);
-  clientsSheet.getRange(2, 1, clients.length, headers.length).setValues(clients);
-  clientsSheet.setFrozenRows(1);
-  clientsSheet.getRange(1, 1, 1, headers.length)
-    .setFontWeight('bold')
-    .setBackground('#086375')
-    .setFontColor('#ddfbd0');
-  clientsSheet.autoResizeColumns(1, headers.length);
+    const clients = [
+      ['C-101', 'Jake', '', 'Tradesman', '00: Discovery', 'Confirm project scope', 6500, false, 'Initial consultation', 0, 4, '', '', ''],
+      ['C-102', 'Marco', '', 'Tech-Savvy Game Dev', '05: Builds', 'Review sprint priorities', 12500, true, 'Gameplay prototype', 2, 4, '', '', ''],
+      ['C-103', 'Cassie', '', 'Veterinarian', '04: Session Zero Kickoff', 'Gather practice requirements', 8400, false, 'Discovery session', 1, 5, '', '', ''],
+      ['C-104', 'Rachel', '', 'Dance Program Owner', '00: Discovery', 'Schedule onboarding call', 7200, false, 'Initial consultation', 0, 4, '', '', ''],
+      ['C-105', 'Tobias', '', 'RPG Game Dev / Stage Manager', '05: Builds', 'Approve production timeline', 15800, true, 'Production planning', 2, 5, '', '', ''],
+      ['C-106', 'Ax', '', 'Innovative Tech Startup', '04: Session Zero Kickoff', 'Confirm launch objectives', 18400, false, 'Discovery session', 1, 5, '', '', ''],
+    ];
 
-  return spreadsheet.getUrl();
+    clientsSheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    clientsSheet.getRange(2, 1, clients.length, headers.length).setValues(clients);
+    clientsSheet.setFrozenRows(1);
+    clientsSheet.getRange(1, 1, 1, headers.length)
+      .setFontWeight('bold')
+      .setBackground('#086375')
+      .setFontColor('#ddfbd0');
+    clientsSheet.autoResizeColumns(1, headers.length);
+
+    return spreadsheet.getUrl();
+  } finally {
+    lock.releaseLock();
+  }
 }
 
 function getTodayCalendarEvents() {

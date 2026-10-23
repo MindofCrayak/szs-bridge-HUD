@@ -3,12 +3,14 @@ import { ScreenView } from '../types';
 
 interface SkyHeaderProps {
   currentScreen: ScreenView;
+  clientCount: number;
   onSelectScreen: (screen: ScreenView) => void;
   onOpenOracle: () => void;
 }
 
 export const SkyHeader: React.FC<SkyHeaderProps> = ({
   currentScreen,
+  clientCount,
   onSelectScreen,
   onOpenOracle,
 }) => {
@@ -97,15 +99,11 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
         </button>
         <div className="flex items-center gap-1.5 rounded border border-accent-teal bg-primary-plum/45 px-2 py-1 text-text-mana">
           <i className="fa-solid fa-chart-column text-alert-orange"></i>
-          <span>PIPELINE MRR: $18,400</span>
+          <span>CLIENTS: {clientCount}</span>
         </div>
         <div className="flex items-center gap-1.5 rounded border border-accent-teal bg-primary-plum/45 px-2 py-1 text-text-mana">
-          <i className="fa-solid fa-users text-alert-orange"></i>
-          <span>SUBSCRIBERS: 1,204</span>
-        </div>
-        <div className="flex items-center gap-1.5 rounded border border-accent-teal bg-primary-plum/45 px-2 py-1 text-text-mana">
-          <i className="fa-solid fa-envelope-open-text text-alert-orange"></i>
-          <span>OPEN RATE: 42%</span>
+          <i className="fa-solid fa-satellite-dish text-alert-orange"></i>
+          <span>MASTER CONTROL: ONLINE</span>
         </div>
       </div>
     </header>

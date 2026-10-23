@@ -1,5 +1,6 @@
 import React, { useRef, useState, useCallback } from 'react';
 import { ClientUnit } from '../types';
+import { getPipelineColumnIndex, getPipelineStageForColumn, PIPELINE_COLUMNS } from '../data/pipeline';
 
 interface KanbanCanvasProps {
   units: ClientUnit[];
@@ -42,15 +43,11 @@ export const KanbanCanvas: React.FC<KanbanCanvasProps> = ({
     hasMoved: false,
   });
 
-  const getPipelineStageFromCoordinates = useCallback((x: number, maxX: number) => {
-    const col = Math.min(3, Math.max(0, Math.floor((x / Math.max(maxX, 1)) * 4)));
-    const pipelineStages = [
-      '01: Intake',
-      '02: Session Zero',
-      '03: Active Sprints',
-      '04: Liftoff',
-    ];
-    return pipelineStages[col] || '01: Intake';
+  const getPipelineStageFromCoordinates = useCallback((x: number, maxX: number, currentStage: string) => {
+    const columnIndex = Math.min(PIPELINE_COLUMNS.length - 1, Math.max(0, Math.floor((x / Math.max(maxX, 1)) * PIPELINE_COLUMNS.length)));
+    return getPipelineColumnIndex(currentStage) === columnIndex
+      ? currentStage
+      : getPipelineStageForColumn(columnIndex);
   }, []);
 
   const handlePointerDown = (e: React.PointerEvent, unit: ClientUnit) => {
@@ -105,7 +102,7 @@ export const KanbanCanvas: React.FC<KanbanCanvasProps> = ({
     newY = Math.max(10, Math.min(newY, maxH));
 
     const normalizedX = (newX / container.clientWidth) * 1000;
-    const pipelineStage = getPipelineStageFromCoordinates(normalizedX, 1000);
+    const pipelineStage = getPipelineStageFromCoordinates(normalizedX, 1000, unit.pipelineStage);
 
     // Update pipeline stage hover check
     const colIndex = Math.min(3, Math.max(0, Math.floor((normalizedX / 1000) * 4)));
@@ -122,8 +119,8 @@ export const KanbanCanvas: React.FC<KanbanCanvasProps> = ({
     if (unit && dragRef.current.hasMoved) {
       const container = containerRef.current;
       const finalStage = container
-        ? getPipelineStageFromCoordinates(unit.posX, 1000)
-        : '01: Intake';
+        ? getPipelineStageFromCoordinates(unit.posX, 1000, unit.pipelineStage)
+        : getPipelineStageForColumn(0);
 
       onLogTerminal(
         `Pipeline stage updated: ${unit.name} moved to ${finalStage}.`,
@@ -154,7 +151,7 @@ export const KanbanCanvas: React.FC<KanbanCanvasProps> = ({
       <div
         className="pointer-events-none absolute inset-3 z-5 grid grid-cols-4 gap-3"
       >
-        {/* 01: Intake */}
+        {/* Intake */}
         <div
           id="zone-intake"
           className={`relative overflow-hidden border-1.5 border-t-2 border-dashed border-t-[#E0CA3C] rounded-lg p-2.5 flex flex-col bg-gradient-to-b from-[#0d1f18]/75 via-[#05130e]/80 to-[#020500]/75 shadow-[0_0_15px_rgba(224,202,60,0.15)] before:pointer-events-none before:absolute before:left-3 before:right-3 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-[#E0CA3C] before:to-transparent transition-all ${
@@ -172,9 +169,10 @@ export const KanbanCanvas: React.FC<KanbanCanvasProps> = ({
               LEADS
             </span>
           </div>
+          <p className="mt-2 font-mono text-[0.55rem] leading-relaxed text-text-mana/45">{PIPELINE_COLUMNS[0].stages.join(' · ')}</p>
         </div>
 
-        {/* 02: Session Zero */}
+        {/* Session Zero */}
         <div
           id="zone-session-zero"
           className={`relative overflow-hidden border-1.5 border-t-2 border-dashed border-t-[#E0CA3C] rounded-lg p-2.5 flex flex-col bg-gradient-to-b from-[#0d1f18]/75 via-[#05130e]/80 to-[#020500]/75 shadow-[0_0_15px_rgba(224,202,60,0.15)] before:pointer-events-none before:absolute before:left-3 before:right-3 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-[#E0CA3C] before:to-transparent transition-all ${
@@ -192,9 +190,10 @@ export const KanbanCanvas: React.FC<KanbanCanvasProps> = ({
               DISCOVERY
             </span>
           </div>
+          <p className="mt-2 font-mono text-[0.55rem] leading-relaxed text-text-mana/45">{PIPELINE_COLUMNS[1].stages.join(' · ')}</p>
         </div>
 
-        {/* 03: Active Sprints */}
+        {/* Active Sprints */}
         <div
           id="zone-active-sprints"
           className={`relative overflow-hidden border-1.5 border-t-2 border-dashed border-t-[#E0CA3C] rounded-lg p-2.5 flex flex-col bg-gradient-to-b from-[#0d1f18]/75 via-[#05130e]/80 to-[#020500]/75 shadow-[0_0_15px_rgba(224,202,60,0.15)] before:pointer-events-none before:absolute before:left-3 before:right-3 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-[#E0CA3C] before:to-transparent transition-all ${
@@ -212,9 +211,10 @@ export const KanbanCanvas: React.FC<KanbanCanvasProps> = ({
               DELIVERY
             </span>
           </div>
+          <p className="mt-2 font-mono text-[0.55rem] leading-relaxed text-text-mana/45">{PIPELINE_COLUMNS[2].stages.join(' · ')}</p>
         </div>
 
-        {/* 04: Liftoff */}
+        {/* Liftoff */}
         <div
           id="zone-liftoff"
           className={`relative overflow-hidden border-1.5 border-t-2 border-dashed border-t-[#E0CA3C] rounded-lg p-2.5 flex flex-col bg-gradient-to-b from-[#0d1f18]/75 via-[#05130e]/80 to-[#020500]/75 shadow-[0_0_15px_rgba(224,202,60,0.15)] before:pointer-events-none before:absolute before:left-3 before:right-3 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-[#E0CA3C] before:to-transparent transition-all ${
@@ -232,6 +232,7 @@ export const KanbanCanvas: React.FC<KanbanCanvasProps> = ({
               COMPLETE
             </span>
           </div>
+          <p className="mt-2 font-mono text-[0.55rem] leading-relaxed text-text-mana/45">{PIPELINE_COLUMNS[3].stages.join(' · ')}</p>
         </div>
       </div>
 

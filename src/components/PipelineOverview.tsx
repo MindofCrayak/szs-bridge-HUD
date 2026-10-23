@@ -1,5 +1,6 @@
 import React from 'react';
 import { ClientUnit } from '../types';
+import { getPipelineColumnIndex, PIPELINE_COLUMNS } from '../data/pipeline';
 
 interface PipelineOverviewProps {
   units: ClientUnit[];
@@ -7,13 +8,6 @@ interface PipelineOverviewProps {
   onNavigateToDashboard: () => void;
   onLogTerminal: (message: string, type?: 'normal' | 'action' | 'server' | 'alert') => void;
 }
-
-const PIPELINE_STAGES = [
-  '01: Intake',
-  '02: Session Zero',
-  '03: Active Sprints',
-  '04: Liftoff',
-];
 
 export const PipelineOverview: React.FC<PipelineOverviewProps> = ({
   units,
@@ -30,12 +24,15 @@ export const PipelineOverview: React.FC<PipelineOverviewProps> = ({
       <span className="font-mono text-xs text-text-mana/65">{units.length} CLIENTS</span>
     </div>
     <div className="grid h-[calc(100%-4rem)] min-w-[900px] grid-cols-4 gap-3">
-      {PIPELINE_STAGES.map((stage) => {
-        const clients = units.filter((client) => client.pipelineStage === stage);
+      {PIPELINE_COLUMNS.map((column, columnIndex) => {
+        const clients = units.filter((client) => getPipelineColumnIndex(client.pipelineStage) === columnIndex);
         return (
-          <section key={stage} className="flex min-h-0 flex-col rounded-xl border border-accent-teal bg-primary-plum/25">
+          <section key={column.id} className="flex min-h-0 flex-col rounded-xl border border-accent-teal bg-primary-plum/25">
             <div className="flex items-center justify-between border-b border-accent-teal/50 bg-primary-plum/70 px-3 py-2">
-              <h2 className="font-display text-sm font-bold text-text-mana">{stage}</h2>
+              <div>
+                <h2 className="font-display text-sm font-bold text-text-mana">{column.title}</h2>
+                <p className="font-mono text-[0.58rem] text-text-mana/50">{column.stages.join(' · ')}</p>
+              </div>
               <span className="rounded-full bg-bg-obsidian px-2 py-0.5 font-mono text-xs text-alert-orange">{clients.length}</span>
             </div>
             <div className="flex-1 space-y-2 overflow-y-auto p-2">
@@ -64,6 +61,7 @@ export const PipelineOverview: React.FC<PipelineOverviewProps> = ({
                       <span>{client.currentMilestone}</span>
                       <span>{client.completedMilestones}/{client.totalMilestones}</span>
                     </div>
+                    <div className="mt-1 font-mono text-[0.62rem] text-text-mana/50">{client.pipelineStage || 'Stage not recorded'}</div>
                     <div className="mt-1 h-1 overflow-hidden rounded-full bg-accent-teal/30">
                       <div className="h-full bg-alert-orange" style={{ width: `${progress}%` }} />
                     </div>

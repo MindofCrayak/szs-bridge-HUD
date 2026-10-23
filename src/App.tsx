@@ -15,30 +15,15 @@ import { PipelineOverview } from './components/PipelineOverview';
 import { ClientDirectoryView } from './components/ClientDirectoryView';
 import { MacroMatrixView } from './components/MacroMatrixView';
 import { OraclePanel } from './components/OraclePanel';
-import { API_URL } from './data/api';
-
-interface ClientApiRow {
-  ClientID: unknown;
-  ClientName: unknown;
-  ContactEmail: unknown;
-  Archetype: unknown;
-  PipelineStage: unknown;
-  ActiveRoadblock: unknown;
-  ContractValue: unknown;
-  DepositPaid: unknown;
-  CurrentMilestone: unknown;
-  CompletedMilestones: unknown;
-  TotalMilestones: unknown;
-  ChatSpaceUrl: unknown;
-  NotesDocUrl: unknown;
-  RootFolderID?: unknown;
-  MSA_DocID?: unknown;
-  ProjectFolderID?: unknown;
-  SOW_DocID?: unknown;
-  MeetingNotes_DriveFolderID?: unknown;
-}
+import { ComplianceModal } from './components/ComplianceModal';
+import { API_SECRET_KEY, API_URL } from './data/api';
+import { normalizePipelineStage } from './data/pipeline';
+import { createClientId } from './data/identity';
 
 const toText = (value: unknown): string => value == null ? '' : String(value);
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
 
 const toBoolean = (value: unknown): boolean => {
   if (typeof value === 'string') {
@@ -85,6 +70,8 @@ export default function App() {
   const [stagingCollapsed, setStagingCollapsed] = useState(true);
   const [activeModal, setActiveModal] = useState<ActiveModal>(null);
   const [isOracleOpen, setIsOracleOpen] = useState(false);
+  const [isComplianceModalOpen, setIsComplianceModalOpen] = useState(false);
+  const [complianceRequestId, setComplianceRequestId] = useState(0);
   const [terminalLogs, setTerminalLogs] = useState<TerminalLog[]>([
     { id: '1', time: '00:01', text: 'Dashboard Online. Client pipeline is ready.', type: 'server' },
     { id: '2', time: '00:02', text: 'Shift-click to select multiple clients. Shift + 1–9 saves a client group.', type: 'action' },
@@ -99,43 +86,84 @@ export default function App() {
       setLoadError(null);
 
       try {
-        const response = await fetch(API_URL, { signal: controller.signal });
+        if (!API_SECRET_KEY) {
+          throw new Error('Set VITE_API_SECRET_KEY in the root .env file and restart the development server.');
+        }
+
+        const requestUrl = new URL(API_URL);
+        requestUrl.searchParams.set('action', 'getHudState');
+        requestUrl.searchParams.set('secret', API_SECRET_KEY);
+
+        const response = await fetch(requestUrl, {
+          method: 'GET',
+          redirect: 'follow',
+          signal: controller.signal,
+        });
         if (!response.ok) {
-          throw new Error(`Google Sheets request failed with status ${response.status}.`);
+          throw new Error(`Master Control request failed with status ${response.status}.`);
         }
 
         const responseData: unknown = await response.json();
-        if (!Array.isArray(responseData)) {
-          throw new Error('Google Sheets returned an invalid client list.');
+        if (!isRecord(responseData)) {
+          throw new Error('Master Control returned an invalid HUD state response.');
         }
 
-        const clients = (responseData as ClientApiRow[]).map((row): ClientUnit => {
-          const name = toText(row.ClientName);
-          const archetype = toText(row.Archetype);
-          const activePebble = toText(row.ActiveRoadblock);
+        if (responseData.status !== 200) {
+          throw new Error(toText(responseData.message) || 'Master Control rejected the HUD state request.');
+        }
+
+        const stateData = responseData.data;
+        if (!isRecord(stateData) || !Array.isArray(stateData.clients)) {
+          throw new Error('Master Control returned an invalid client list.');
+        }
+
+        const clients = stateData.clients.map((row): ClientUnit => {
+          if (!isRecord(row)) {
+            throw new Error('Master Control returned an invalid client record.');
+          }
+          const normalizedFields = new Map(
+            Object.entries(row).map(([field, value]) => [field.replace(/_/g, '').toLowerCase(), value]),
+          );
+          const readField = (field: string) => normalizedFields.get(field.replace(/_/g, '').toLowerCase());
+          const id = toText(readField('ClientID')).trim();
+          const personName = [readField('FirstName'), readField('LastName')]
+            .map((value) => toText(value).trim())
+            .filter(Boolean)
+            .join(' ');
+          const name = [readField('ClientName'), readField('CompanyName'), personName]
+            .map((value) => toText(value).trim())
+            .find(Boolean) || '';
+          if (!id || !name) {
+            throw new Error('Master Control client records must include ClientID and a client or company name.');
+          }
+          const archetype = toText(readField('Archetype'));
+          const activePebble = toText(readField('ActiveRoadblock'));
 
           return {
-            id: toText(row.ClientID),
+            id,
             name,
             archetype,
             serviceArea: archetype,
             avatar: getInitials(name),
-            contactEmail: toText(row.ContactEmail),
-            pipelineStage: toText(row.PipelineStage),
+            contactEmail: toText(readField('ContactEmail')),
+            googleGroupEmail: toText(readField('GoogleGroupEmail')),
+            pipelineStage: normalizePipelineStage(toText(readField('PipelineStage'))),
             activePebble,
             roadblock: activePebble,
-            contractValue: Number(row.ContractValue),
-            depositPaid: toBoolean(row.DepositPaid),
-            currentMilestone: toText(row.CurrentMilestone),
-            completedMilestones: Number(row.CompletedMilestones),
-            totalMilestones: Number(row.TotalMilestones),
-            chatSpaceUrl: toText(row.ChatSpaceUrl),
-            notesDocUrl: toText(row.NotesDocUrl),
-            RootFolderID: toText(row.RootFolderID),
-            MSA_DocID: toText(row.MSA_DocID),
-            ProjectFolderID: toText(row.ProjectFolderID),
-            SOW_DocID: toText(row.SOW_DocID),
-            MeetingNotes_DriveFolderID: toText(row.MeetingNotes_DriveFolderID),
+            contractValue: Number(readField('ContractValue')),
+            depositPaid: toBoolean(readField('DepositPaid')),
+            currentMilestone: toText(readField('CurrentMilestone')),
+            completedMilestones: Number(readField('CompletedMilestones')),
+            totalMilestones: Number(readField('TotalMilestones')),
+            chatSpaceUrl: toText(readField('ChatSpaceUrl')),
+            notesDocUrl: toText(readField('NotesDocUrl')),
+            driveFolderUrl: toText(readField('DriveFolderUrl')),
+            caseFileJsonUrl: toText(readField('CaseFileJsonUrl')),
+            RootFolderID: toText(readField('RootFolderID')),
+            MSA_DocID: toText(readField('MSA_DocID')),
+            ProjectFolderID: toText(readField('ProjectFolderID')),
+            SOW_DocID: toText(readField('SOW_DocID')),
+            MeetingNotes_DriveFolderID: toText(readField('MeetingNotes_DriveFolderID')),
             posX: Math.floor(50 + Math.random() * 751),
             posY: Math.floor(50 + Math.random() * 251),
           };
@@ -213,13 +241,14 @@ export default function App() {
 
   const handleSpawnUnit = (presetKey: string) => {
     const preset = CLIENT_TEMPLATES[presetKey] || CLIENT_TEMPLATES.strategy;
-    const randomId = `C-${Date.now()}`;
+    const randomId = createClientId(preset.name, units.map((unit) => unit.id));
+    const generatedName = `${preset.name} #${Date.now()}`;
     const randomX = 35 + Math.random() * 15;
     const randomY = 80 + Math.random() * 150;
 
     const newUnit: ClientUnit = {
       id: randomId,
-      name: `${preset.name} #${randomId.split('-')[1]}`,
+      name: generatedName,
       archetype: preset.serviceArea,
       serviceArea: preset.serviceArea,
       avatar: preset.avatar,
@@ -230,7 +259,7 @@ export default function App() {
       depositPaid: false,
       posX: randomX,
       posY: randomY,
-      pipelineStage: '01: Intake',
+      pipelineStage: '00: Discovery',
       roadblock: 'Confirm project scope',
       contactEmail: '',
     };
@@ -275,9 +304,23 @@ export default function App() {
   const handleTriggerCommand = (key: CommandKey) => {
     const cmd = COMMAND_ABILITIES.find((c) => c.key === key);
     if (!cmd || cmd.disabled) return;
-    setActiveModal(key);
+
     const active = units.find((u) => u.id === activeUnitId) || units[0];
     const targetText = selectedUnitIds.length > 1 ? `${selectedUnitIds.length} clients` : active?.name;
+    if (key === 'Z') {
+      setIsOracleOpen(true);
+      logTerminal(`${cmd.label} opened${targetText ? ` for ${targetText}` : ''}.`, 'action');
+      return;
+    }
+    if (key === 'C') {
+      setCurrentScreen('dashboard');
+      setIsComplianceModalOpen(true);
+      setComplianceRequestId((requestId) => requestId + 1);
+      logTerminal(`${cmd.label} started${targetText ? ` for ${targetText}` : ''}.`, 'action');
+      return;
+    }
+
+    setActiveModal(key);
     logTerminal(`${cmd.label} started${targetText ? ` for ${targetText}` : ''}.`, 'action');
   };
 
@@ -364,6 +407,7 @@ export default function App() {
       {/* Dashboard header */}
       <SkyHeader
         currentScreen={currentScreen}
+        clientCount={units.length}
         onSelectScreen={setCurrentScreen}
         onOpenOracle={() => setIsOracleOpen(true)}
       />
@@ -397,6 +441,7 @@ export default function App() {
             activeGroupNum={activeGroupNum}
             onRecallControlGroup={handleRecallControlGroup}
             onTriggerCommand={handleTriggerCommand}
+            complianceRequestId={complianceRequestId}
           />
         </main>
       )}
@@ -439,6 +484,7 @@ export default function App() {
         activeModal={activeModal}
         onClose={() => setActiveModal(null)}
         activeUnit={activeUnit}
+        units={units}
         onAddUnit={handleAddUnit}
         onLogTerminal={logTerminal}
       />
@@ -449,6 +495,12 @@ export default function App() {
         onClose={() => setIsOracleOpen(false)}
         onLogTerminal={logTerminal}
       />
+      {isComplianceModalOpen && (
+        <ComplianceModal
+          activeUnit={activeUnit}
+          onClose={() => setIsComplianceModalOpen(false)}
+        />
+      )}
     </div>
   );
 }
