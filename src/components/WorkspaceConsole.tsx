@@ -162,6 +162,9 @@ export const WorkspaceConsole: React.FC<WorkspaceConsoleProps> = ({
                 {currentClient.googleGroupEmail && (
                   <div className="mb-2 break-all text-text-mana/65">{currentClient.googleGroupEmail}</div>
                 )}
+                {currentClient.taskListId && (
+                  <div className="mb-2 break-all text-text-mana/65">Tasklist ID · {currentClient.taskListId}</div>
+                )}
                 <div className="space-y-1.5">
                   {([
                     ['Root Folder', currentClient.RootFolderID, true],

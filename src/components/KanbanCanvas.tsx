@@ -1,25 +1,34 @@
 import React, { useRef, useState, useCallback } from 'react';
 import { ClientUnit } from '../types';
-import { getPipelineColumnIndex, getPipelineStageForColumn, PIPELINE_COLUMNS } from '../data/pipeline';
+import { getPipelineColumnIndex, getPipelineStageForColumn, normalizePipelineStage, PIPELINE_COLUMNS } from '../data/pipeline';
+
+const currencyFormatter = new Intl.NumberFormat('en-US', {
+  style: 'currency',
+  currency: 'USD',
+});
 
 interface KanbanCanvasProps {
   units: ClientUnit[];
+  activeFilters: number[];
   activeUnitId: string | null;
   selectedUnitIds: string[];
   onSelectUnit: (id: string, isShift: boolean) => void;
   onUpdateUnitPosition: (id: string, x: number, y: number, pipelineStage?: string) => void;
   gridSnapEnabled: boolean;
   onLogTerminal: (message: string, type?: 'normal' | 'action' | 'server' | 'alert') => void;
+  onOpenContextMenu: (x: number, y: number, client: ClientUnit) => void;
 }
 
 export const KanbanCanvas: React.FC<KanbanCanvasProps> = ({
   units,
+  activeFilters,
   activeUnitId,
   selectedUnitIds,
   onSelectUnit,
   onUpdateUnitPosition,
   gridSnapEnabled,
   onLogTerminal,
+  onOpenContextMenu,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [hoveredZoneId, setHoveredZoneId] = useState<string | null>(null);
@@ -49,6 +58,9 @@ export const KanbanCanvas: React.FC<KanbanCanvasProps> = ({
       ? currentStage
       : getPipelineStageForColumn(columnIndex);
   }, []);
+  const visibleUnits = units.filter((unit) => (
+    normalizePipelineStage(unit.pipelineStage) !== '09: Sunset / Retainer'
+  ) && activeFilters.includes(getPipelineColumnIndex(unit.pipelineStage)));
 
   const handlePointerDown = (e: React.PointerEvent, unit: ClientUnit) => {
     if (e.button !== 0) return;
@@ -163,7 +175,7 @@ export const KanbanCanvas: React.FC<KanbanCanvasProps> = ({
           <div className="flex justify-between items-center font-display text-[0.65rem] tracking-wider text-text-mana/80 border-b border-accent-teal/40 pb-1">
             <span className="flex items-center gap-1.5">
               <i className="fa-solid fa-layer-group text-alert-orange"></i>
-              <span>01: INTAKE</span>
+              <span>INTAKE</span>
             </span>
             <span className="font-mono text-[0.62rem] px-1.5 py-0.5 rounded bg-primary-plum/70 border border-accent-teal text-alert-orange">
               LEADS
@@ -184,7 +196,7 @@ export const KanbanCanvas: React.FC<KanbanCanvasProps> = ({
           <div className="flex justify-between items-center font-display text-[0.65rem] tracking-wider text-text-mana/80 border-b border-accent-teal/40 pb-1">
             <span className="flex items-center gap-1.5">
               <i className="fa-solid fa-clipboard-list text-alert-orange"></i>
-              <span>02: SESSION ZERO</span>
+              <span>SESSION ZERO</span>
             </span>
             <span className="font-mono text-[0.62rem] px-1.5 py-0.5 rounded bg-primary-plum/70 border border-accent-teal text-alert-orange">
               DISCOVERY
@@ -205,7 +217,7 @@ export const KanbanCanvas: React.FC<KanbanCanvasProps> = ({
           <div className="flex justify-between items-center font-display text-[0.65rem] tracking-wider text-text-mana/80 border-b border-accent-teal/40 pb-1">
             <span className="flex items-center gap-1.5">
               <i className="fa-solid fa-list-check text-alert-orange"></i>
-              <span>03: ACTIVE SPRINTS</span>
+              <span>ACTIVE SPRINTS</span>
             </span>
             <span className="font-mono text-[0.62rem] px-1.5 py-0.5 rounded bg-primary-plum/70 border border-accent-teal text-alert-orange">
               DELIVERY
@@ -226,7 +238,7 @@ export const KanbanCanvas: React.FC<KanbanCanvasProps> = ({
           <div className="flex justify-between items-center font-display text-[0.65rem] tracking-wider text-text-mana/80 border-b border-accent-teal/40 pb-1">
             <span className="flex items-center gap-1.5">
               <i className="fa-solid fa-flag-checkered text-alert-orange"></i>
-              <span>04: LIFTOFF</span>
+              <span>LIFTOFF</span>
             </span>
             <span className="font-mono text-[0.62rem] px-1.5 py-0.5 rounded bg-primary-plum/70 border border-accent-teal text-alert-orange">
               COMPLETE
@@ -237,7 +249,7 @@ export const KanbanCanvas: React.FC<KanbanCanvasProps> = ({
       </div>
 
       {/* Draggable Units */}
-      {units.map((unit) => {
+      {visibleUnits.map((unit) => {
         const isPrimary = unit.id === activeUnitId;
         const isMulti = selectedUnitIds.includes(unit.id);
         const isDragging = dragRef.current.isDragging && dragRef.current.unitId === unit.id;
@@ -246,6 +258,11 @@ export const KanbanCanvas: React.FC<KanbanCanvasProps> = ({
           <div
             key={unit.id}
             onPointerDown={(e) => handlePointerDown(e, unit)}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              onOpenContextMenu(event.clientX, event.clientY, unit);
+            }}
+            id={`card-${unit.id}`}
             aria-label={`${unit.name} (${unit.id}), ${unit.archetype}, ${unit.pipelineStage}, contract $${unit.contractValue.toLocaleString()}, deposit ${unit.depositPaid ? 'paid' : 'unpaid'}, ${unit.completedMilestones} of ${unit.totalMilestones} milestones${unit.activePebble ? `, roadblock: ${unit.activePebble}` : ''}`}
             style={{
               left: `${unit.posX / 10}%`,
@@ -287,17 +304,15 @@ export const KanbanCanvas: React.FC<KanbanCanvasProps> = ({
               </div>
 
               <div className="flex-1 overflow-hidden">
-                <div className="truncate font-display text-[0.74rem] font-bold text-text-mana">
-                  {unit.name}
+                <div className="truncate font-display text-[0.74rem] font-bold text-text-mana" title={unit.companyName || unit.name}>
+                  {unit.companyName || unit.id}
                 </div>
                 <div className="truncate text-[0.62rem] text-text-mana/65">
-                  {unit.serviceArea}
+                  {unit.primaryContact || unit.leadSource || 'No Contact'}
                 </div>
               </div>
 
-              <span className="rounded border border-accent-teal/50 bg-bg-obsidian/80 px-1 py-0.5 font-mono text-[0.56rem] text-text-mana">
-                X:{Math.round(unit.posX)}
-              </span>
+              <span className="rounded bg-primary-plum px-1.5 py-0.5 font-mono text-[0.56rem] text-highlight-gold">{unit.id}</span>
             </div>
 
             <div className="mt-1">
@@ -324,13 +339,32 @@ export const KanbanCanvas: React.FC<KanbanCanvasProps> = ({
               </div>
             </div>
 
+            <div className="mt-2 flex flex-wrap items-center gap-1 font-mono text-[0.53rem]">
+              <span className={`rounded px-1.5 py-0.5 ${unit.MSA_DocID ? 'bg-text-mana/20 text-text-mana' : 'bg-plasma text-bg-obsidian'}`}>
+                {unit.MSA_DocID ? 'MSA READY' : 'MSA MISSING'}
+              </span>
+              <span className={`rounded px-1.5 py-0.5 ${unit.depositPaid ? 'text-gold' : 'bg-plasma text-bg-obsidian'}`}>
+                {unit.depositPaid ? 'DEPOSIT PAID' : 'DEPOSIT DUE'}
+              </span>
+              {unit.osintGenerated || unit.caseFileJsonUrl ? (
+                <span className="rounded px-1.5 py-0.5 text-radar">OSINT READY</span>
+              ) : (
+                <span className="rounded px-1.5 py-0.5 text-text-mana/40">OSINT PENDING</span>
+              )}
+              {unit.driveFolderUrl || unit.RootFolderID ? (
+                <span className="rounded bg-radar/40 px-1.5 py-0.5 text-text-mana">DRIVE</span>
+              ) : (
+                <span className="rounded px-1.5 py-0.5 text-text-mana/40">NO DRIVE</span>
+              )}
+            </div>
+
             {/* Footer with pipeline stage and contract value */}
             <div className="mt-1 flex items-center justify-between font-mono text-[0.62rem] text-text-mana">
               <span className="max-w-[110px] truncate text-text-mana/70">
                 <i className="fa-solid fa-flag mr-1 text-[0.55rem] text-alert-orange"></i>
                 {unit.pipelineStage}
               </span>
-              <span className="font-bold text-alert-orange">${unit.contractValue.toLocaleString()}</span>
+              <span className="font-bold text-gold">{currencyFormatter.format(unit.contractValue)}</span>
             </div>
             {unit.activePebble && (
               <div className="mt-1 truncate border-t border-accent-teal/30 pt-1 font-mono text-[0.56rem] text-alert-orange/85" title={unit.activePebble}>

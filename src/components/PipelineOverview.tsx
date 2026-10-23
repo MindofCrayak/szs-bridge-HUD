@@ -1,6 +1,6 @@
 import React from 'react';
 import { ClientUnit } from '../types';
-import { getPipelineColumnIndex, PIPELINE_COLUMNS } from '../data/pipeline';
+import { getPipelineColumnIndex, normalizePipelineStage, PIPELINE_COLUMNS } from '../data/pipeline';
 
 interface PipelineOverviewProps {
   units: ClientUnit[];
@@ -14,18 +14,20 @@ export const PipelineOverview: React.FC<PipelineOverviewProps> = ({
   onSelectUnit,
   onNavigateToDashboard,
   onLogTerminal,
-}) => (
+}) => {
+  const activeUnits = units.filter((unit) => normalizePipelineStage(unit.pipelineStage) !== '09: Sunset / Retainer');
+  return (
   <main className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden bg-bg-obsidian p-5">
     <div className="mb-4 flex items-end justify-between">
       <div>
         <p className="font-mono text-xs uppercase tracking-widest text-alert-orange">Delivery workflow</p>
         <h1 className="font-display text-2xl font-bold text-text-mana">Client Pipeline</h1>
       </div>
-      <span className="font-mono text-xs text-text-mana/65">{units.length} CLIENTS</span>
+      <span className="font-mono text-xs text-text-mana/65">{activeUnits.length} ACTIVE CLIENTS</span>
     </div>
     <div className="grid h-[calc(100%-4rem)] min-w-[900px] grid-cols-4 gap-3">
       {PIPELINE_COLUMNS.map((column, columnIndex) => {
-        const clients = units.filter((client) => getPipelineColumnIndex(client.pipelineStage) === columnIndex);
+        const clients = activeUnits.filter((client) => getPipelineColumnIndex(client.pipelineStage) === columnIndex);
         return (
           <section key={column.id} className="flex min-h-0 flex-col rounded-xl border border-accent-teal bg-primary-plum/25">
             <div className="flex items-center justify-between border-b border-accent-teal/50 bg-primary-plum/70 px-3 py-2">
@@ -82,4 +84,5 @@ export const PipelineOverview: React.FC<PipelineOverviewProps> = ({
       })}
     </div>
   </main>
-);
+  );
+};

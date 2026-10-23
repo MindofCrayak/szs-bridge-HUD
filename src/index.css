@@ -8,6 +8,16 @@
   --color-accent-teal: #086375;
   --color-alert-orange: #fe5f00;
   --color-highlight-gold: #e0ca3c;
+  --color-bg-plum: #5f0f40;
+  --color-border-radar: #086375;
+  --color-text-plasma: #fe5f00;
+  --color-bg-plasma: #fe5f00;
+  --color-text-gold: #e0ca3c;
+  --color-bg-gold: #e0ca3c;
+  --color-plum: #5f0f40;
+  --color-radar: #086375;
+  --color-plasma: #fe5f00;
+  --color-gold: #e0ca3c;
   --font-display: "Montserrat Alternates", sans-serif;
   --font-body: "Jacques Francois", serif;
   --font-accent: "Odibee Sans", sans-serif;
@@ -22,6 +32,16 @@
   --accent-teal: #086375;
   --alert-orange: #fe5f00;
   --highlight-gold: #e0ca3c;
+  --bg-plum: #5f0f40;
+  --border-radar: #086375;
+  --text-plasma: #fe5f00;
+  --bg-plasma: #fe5f00;
+  --text-gold: #e0ca3c;
+  --bg-gold: #e0ca3c;
+  --plum: #5f0f40;
+  --radar: #086375;
+  --plasma: #fe5f00;
+  --gold: #e0ca3c;
   color-scheme: dark;
   font-family: "Jacques Francois", serif;
 }

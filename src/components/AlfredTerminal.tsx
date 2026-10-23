@@ -51,6 +51,7 @@ export const AlfredTerminal = forwardRef<AlfredTerminalHandle, AlfredTerminalPro
         `Milestones completed: ${activeUnit.completedMilestones}`,
         `Milestones total: ${activeUnit.totalMilestones}`,
         `Google Group Email: ${activeUnit.googleGroupEmail || 'Not recorded'}`,
+        `Google Tasklist ID: ${activeUnit.taskListId || 'Not recorded'}`,
         `Chat Space URL: ${activeUnit.chatSpaceUrl || 'Not recorded'}`,
         `Client notes URL: ${activeUnit.notesDocUrl || 'Not recorded'}`,
         `Oracle case file URL: ${activeUnit.caseFileJsonUrl || 'Not recorded'}`,

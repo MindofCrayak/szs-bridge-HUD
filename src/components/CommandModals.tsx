@@ -111,6 +111,9 @@ export const CommandModals: React.FC<CommandModalsProps> = ({
       pipelineStage: '00: Discovery',
       roadblock: 'Confirm project scope',
       contactEmail: contactEmail.trim(),
+      companyName: company.trim(),
+      primaryContact: clientName.trim(),
+      isDraft: true,
     };
     onAddUnit(newClient);
     onLogTerminal(`Client Onboarded: ${newClient.name} added to Intake.`, 'action');

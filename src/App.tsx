@@ -4,10 +4,11 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
-import { ClientUnit, CommandKey, ActiveModal, ScreenView, TerminalLog } from './types';
-import { CLIENT_TEMPLATES, COMMAND_ABILITIES } from './data/initialFleet';
+import { AlfredAlert, ClientUnit, CommandKey, ActiveModal, HudTelemetry, ScreenView, TerminalLog } from './types';
+import { COMMAND_ABILITIES } from './data/initialFleet';
 import { SkyHeader } from './components/SkyHeader';
-import { ClientStagingTray } from './components/ClientStagingTray';
+import { AlfredDock } from './components/AlfredDock';
+import { CardContextMenu } from './components/CardContextMenu';
 import { KanbanCanvas } from './components/KanbanCanvas';
 import { WorkspaceConsole } from './components/WorkspaceConsole';
 import { CommandModals } from './components/CommandModals';
@@ -17,19 +18,83 @@ import { MacroMatrixView } from './components/MacroMatrixView';
 import { OraclePanel } from './components/OraclePanel';
 import { ComplianceModal } from './components/ComplianceModal';
 import { API_SECRET_KEY, API_URL } from './data/api';
-import { normalizePipelineStage } from './data/pipeline';
-import { createClientId } from './data/identity';
+import { getNextPipelineStage, normalizePipelineStage, PIPELINE_STAGE_SEQUENCE } from './data/pipeline';
 
 const toText = (value: unknown): string => value == null ? '' : String(value);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
+const readNormalizedField = (record: Record<string, unknown>, field: string): unknown => {
+  const key = field.replace(/_/g, '').toLowerCase();
+  const entry = Object.entries(record).find(([name]) => name.replace(/_/g, '').toLowerCase() === key);
+  return entry?.[1];
+};
+
+const toFiniteNumber = (value: unknown): number => {
+  const number = Number(value);
+  return Number.isFinite(number) ? number : 0;
+};
+
+const getStageNumber = (stage: string): number => {
+  const value = Number.parseInt(normalizePipelineStage(stage).split(':', 1)[0], 10);
+  return Number.isFinite(value) ? value : 0;
+};
+
 const toBoolean = (value: unknown): boolean => {
   if (typeof value === 'string') {
     return ['true', '1', 'yes'].includes(value.trim().toLowerCase());
   }
   return Boolean(value);
+};
+
+const normalizeAlert = (value: unknown, clients: ClientUnit[]): AlfredAlert => {
+  if (!isRecord(value)) throw new Error('Master Control returned an invalid alert record.');
+  const clientId = toText(readNormalizedField(value, 'ClientID'));
+  const client = clients.find((item) => item.id === clientId);
+  return {
+    id: toText(readNormalizedField(value, 'AlertID')) || `ALERT-${clientId}-${toText(readNormalizedField(value, 'Timestamp'))}`,
+    timestamp: toText(readNormalizedField(value, 'Timestamp')),
+    severity: toText(readNormalizedField(value, 'Severity') ?? readNormalizedField(value, 'Priority') ?? readNormalizedField(value, 'Category')) || 'INFO',
+    subRoutine: toText(readNormalizedField(value, 'SubRoutine') ?? readNormalizedField(value, 'Category')) || 'Alfred',
+    clientId,
+    companyName: toText(readNormalizedField(value, 'CompanyName')) || client?.companyName || client?.name || '',
+    message: toText(readNormalizedField(value, 'Message')),
+    dismissed: toBoolean(readNormalizedField(value, 'Dismissed') ?? readNormalizedField(value, 'DismissedStatus')),
+  };
+};
+
+const normalizeTelemetry = (value: unknown, alerts: AlfredAlert[]): HudTelemetry => {
+  const telemetry = isRecord(value) ? value : {};
+  const ribbon = isRecord(telemetry.ribbon) ? telemetry.ribbon : telemetry;
+  return {
+    pipelineMrr: toFiniteNumber(readNormalizedField(ribbon, 'PipelineMRR')),
+    activeSprints: toFiniteNumber(readNormalizedField(ribbon, 'ActiveSprints')),
+    missingDeposits: toFiniteNumber(readNormalizedField(ribbon, 'MissingDeposits')),
+    activeAlertsCount: toFiniteNumber(readNormalizedField(telemetry, 'ActiveAlertsCount')) || alerts.filter((alert) => !alert.dismissed).length,
+    lastSynced: toText(readNormalizedField(telemetry, 'LastSynced')) || toText(readNormalizedField(telemetry, 'Timestamp')),
+  };
+};
+
+const postMasterControlAction = async (payload: Record<string, unknown>): Promise<void> => {
+  if (!API_SECRET_KEY) {
+    throw new Error('Set VITE_API_SECRET_KEY in the root .env file before saving Master Control changes.');
+  }
+  const requestUrl = new URL(API_URL);
+  requestUrl.searchParams.set('secret', API_SECRET_KEY);
+  const response = await fetch(requestUrl, {
+    method: 'POST',
+    redirect: 'follow',
+    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+    body: JSON.stringify(payload),
+  });
+  if (!response.ok) {
+    throw new Error(`Master Control update failed with status ${response.status}.`);
+  }
+  const result: unknown = await response.json();
+  if (!isRecord(result) || (result.status !== 'success' && result.status !== 200)) {
+    throw new Error(isRecord(result) ? toText(result.message ?? result.error) || 'Master Control rejected the update.' : 'Master Control returned an invalid update response.');
+  }
 };
 
 const getInitials = (name: string): string => {
@@ -46,6 +111,11 @@ const getInitials = (name: string): string => {
 export default function App() {
   const [currentScreen, setCurrentScreen] = useState<ScreenView>('dashboard');
   const [units, setUnits] = useState<ClientUnit[]>([]);
+  const [alerts, setAlerts] = useState<AlfredAlert[]>([]);
+  const [telemetry, setTelemetry] = useState<HudTelemetry | null>(null);
+  const [intercomStatus, setIntercomStatus] = useState('');
+  const [activeFilters, setActiveFilters] = useState<number[]>([0, 1, 2, 3]);
+  const [contextMenu, setContextMenu] = useState<{ x: number; y: number; client: ClientUnit } | null>(null);
   const [activeUnitId, setActiveUnitId] = useState<string | null>(null);
   const [selectedUnitIds, setSelectedUnitIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -67,7 +137,6 @@ export default function App() {
   });
   const [activeGroupNum, setActiveGroupNum] = useState<number | null>(1);
   const gridSnapEnabled = true;
-  const [stagingCollapsed, setStagingCollapsed] = useState(true);
   const [activeModal, setActiveModal] = useState<ActiveModal>(null);
   const [isOracleOpen, setIsOracleOpen] = useState(false);
   const [isComplianceModalOpen, setIsComplianceModalOpen] = useState(false);
@@ -108,7 +177,7 @@ export default function App() {
           throw new Error('Master Control returned an invalid HUD state response.');
         }
 
-        if (responseData.status !== 200) {
+        if (responseData.status !== 200 && responseData.status !== 'success') {
           throw new Error(toText(responseData.message) || 'Master Control rejected the HUD state request.');
         }
 
@@ -121,16 +190,15 @@ export default function App() {
           if (!isRecord(row)) {
             throw new Error('Master Control returned an invalid client record.');
           }
-          const normalizedFields = new Map(
-            Object.entries(row).map(([field, value]) => [field.replace(/_/g, '').toLowerCase(), value]),
-          );
-          const readField = (field: string) => normalizedFields.get(field.replace(/_/g, '').toLowerCase());
+          const readField = (field: string) => readNormalizedField(row, field);
           const id = toText(readField('ClientID')).trim();
           const personName = [readField('FirstName'), readField('LastName')]
             .map((value) => toText(value).trim())
             .filter(Boolean)
             .join(' ');
-          const name = [readField('ClientName'), readField('CompanyName'), personName]
+          const companyName = toText(readField('CompanyName') ?? readField('ClientName')).trim();
+          const primaryContact = toText(readField('PrimaryContact')).trim() || personName;
+          const name = [companyName, primaryContact]
             .map((value) => toText(value).trim())
             .find(Boolean) || '';
           if (!id || !name) {
@@ -138,6 +206,7 @@ export default function App() {
           }
           const archetype = toText(readField('Archetype'));
           const activePebble = toText(readField('ActiveRoadblock'));
+          const caseFileJsonUrl = toText(readField('CaseFileJsonUrl'));
 
           return {
             id,
@@ -146,19 +215,24 @@ export default function App() {
             serviceArea: archetype,
             avatar: getInitials(name),
             contactEmail: toText(readField('ContactEmail')),
+            companyName,
+            primaryContact,
+            leadSource: toText(readField('LeadSource')),
+            taskListId: toText(readField('GoogleTasklistID')),
             googleGroupEmail: toText(readField('GoogleGroupEmail')),
-            pipelineStage: normalizePipelineStage(toText(readField('PipelineStage'))),
+            pipelineStage: normalizePipelineStage(toText(readField('PipelineStage') ?? readField('CurrentStage') ?? readField('Stage'))),
             activePebble,
             roadblock: activePebble,
-            contractValue: Number(readField('ContractValue')),
+            contractValue: toFiniteNumber(readField('ContractValue')),
             depositPaid: toBoolean(readField('DepositPaid')),
             currentMilestone: toText(readField('CurrentMilestone')),
-            completedMilestones: Number(readField('CompletedMilestones')),
-            totalMilestones: Number(readField('TotalMilestones')),
+            completedMilestones: toFiniteNumber(readField('CompletedMilestones')),
+            totalMilestones: toFiniteNumber(readField('TotalMilestones')),
             chatSpaceUrl: toText(readField('ChatSpaceUrl')),
             notesDocUrl: toText(readField('NotesDocUrl')),
             driveFolderUrl: toText(readField('DriveFolderUrl')),
-            caseFileJsonUrl: toText(readField('CaseFileJsonUrl')),
+            caseFileJsonUrl,
+            osintGenerated: toBoolean(readField('OSINTGenerated')) || Boolean(caseFileJsonUrl),
             RootFolderID: toText(readField('RootFolderID')),
             MSA_DocID: toText(readField('MSA_DocID')),
             ProjectFolderID: toText(readField('ProjectFolderID')),
@@ -169,14 +243,19 @@ export default function App() {
           };
         });
 
+        const normalizedAlerts = Array.isArray(stateData.alerts)
+          ? stateData.alerts.map((alert) => normalizeAlert(alert, clients))
+          : [];
         setUnits(clients);
+        setAlerts(normalizedAlerts);
+        setTelemetry(normalizeTelemetry(stateData.telemetry ?? stateData.ribbon, normalizedAlerts));
         const firstClientId = clients[0]?.id ?? null;
         setActiveUnitId(firstClientId);
         setSelectedUnitIds(firstClientId ? [firstClientId] : []);
         setControlGroups((previous) => ({ ...previous, 1: firstClientId ? [firstClientId] : [] }));
       } catch (error) {
         if (controller.signal.aborted) return;
-        console.error('Unable to load clients from Google Sheets.', error);
+        console.error('Unable to load HUD state from Master Control.', error);
         setLoadError(error instanceof Error ? error.message : 'Unable to load the client database.');
       } finally {
         if (!controller.signal.aborted) setIsLoading(false);
@@ -220,13 +299,27 @@ export default function App() {
   };
 
   const handleUpdateUnitPosition = (id: string, x: number, y: number, pipelineStage?: string) => {
+    const existingUnit = units.find((unit) => unit.id === id);
+    const previousStage = existingUnit?.pipelineStage;
+    const nextStage = pipelineStage || previousStage || '';
     setUnits((prev) =>
       prev.map((u) =>
         u.id === id
-          ? { ...u, posX: x, posY: y, pipelineStage: pipelineStage || u.pipelineStage }
+          ? { ...u, posX: x, posY: y, pipelineStage: nextStage }
           : u
       )
     );
+    if (!existingUnit || existingUnit.isDraft || !previousStage || nextStage === previousStage) return;
+    void postMasterControlAction({ action: 'updateKanban', clientID: id, newStage: nextStage })
+      .then(() => logTerminal(`${existingUnit.name} moved to ${nextStage}; Master Control synchronized.`, 'server'))
+      .catch((error: unknown) => {
+        setUnits((previous) => previous.map((unit) => (
+          unit.id === id && unit.pipelineStage === nextStage
+            ? { ...unit, pipelineStage: previousStage }
+            : unit
+        )));
+        logTerminal(error instanceof Error ? error.message : 'Master Control could not save the pipeline move.', 'alert');
+      });
   };
 
   const handleUpdateUnit = (updatedUnit: ClientUnit) => {
@@ -234,40 +327,109 @@ export default function App() {
   };
 
   const handleAddUnit = (newUnit: ClientUnit) => {
-    setUnits((prev) => [...prev, newUnit]);
+    setUnits((prev) => [...prev, { ...newUnit, isDraft: true }]);
     setSelectedUnitIds([newUnit.id]);
     setActiveUnitId(newUnit.id);
   };
 
-  const handleSpawnUnit = (presetKey: string) => {
-    const preset = CLIENT_TEMPLATES[presetKey] || CLIENT_TEMPLATES.strategy;
-    const randomId = createClientId(preset.name, units.map((unit) => unit.id));
-    const generatedName = `${preset.name} #${Date.now()}`;
-    const randomX = 35 + Math.random() * 15;
-    const randomY = 80 + Math.random() * 150;
+  const handleToggleFilter = (columnIndex: number) => {
+    setActiveFilters((previous) => previous.includes(columnIndex)
+      ? previous.filter((index) => index !== columnIndex)
+      : [...previous, columnIndex].sort());
+  };
 
-    const newUnit: ClientUnit = {
-      id: randomId,
-      name: generatedName,
-      archetype: preset.serviceArea,
-      serviceArea: preset.serviceArea,
-      avatar: preset.avatar,
-      currentMilestone: 'Initial consultation',
-      totalMilestones: 4,
-      completedMilestones: 0,
-      contractValue: preset.contractValue,
-      depositPaid: false,
-      posX: randomX,
-      posY: randomY,
-      pipelineStage: '00: Discovery',
-      roadblock: 'Confirm project scope',
-      contactEmail: '',
+  const handleJumpToClient = (id: string) => {
+    const client = units.find((unit) => unit.id === id);
+    if (!client) return;
+    setActiveUnitId(id);
+    setSelectedUnitIds([id]);
+    setUnits((previous) => previous.map((unit) => unit.id === id
+      ? { ...unit, posX: 500, posY: Math.max(32, Math.round(window.innerHeight * 0.12)) }
+      : unit));
+    logTerminal(`Viewport focused on ${client.companyName || client.name} (${client.id}).`, 'action');
+  };
+
+  const persistPipelineStage = async (client: ClientUnit, newStage: string) => {
+    if (client.isDraft) {
+      logTerminal(`${client.name} is a local draft; its stage change is not persisted.`, 'alert');
+      return;
+    }
+    setUnits((previous) => previous.map((unit) => unit.id === client.id ? { ...unit, pipelineStage: newStage } : unit));
+    try {
+      await postMasterControlAction({ action: 'updateKanban', clientID: client.id, newStage });
+      logTerminal(`${client.companyName || client.name} moved to ${newStage}; Master Control synchronized.`, 'server');
+    } catch (error) {
+      setUnits((previous) => previous.map((unit) => (
+        unit.id === client.id && unit.pipelineStage === newStage
+          ? { ...unit, pipelineStage: client.pipelineStage }
+          : unit
+      )));
+      logTerminal(error instanceof Error ? error.message : 'Master Control could not save the pipeline stage.', 'alert');
+    }
+  };
+
+  const handleAdvanceStage = (client: ClientUnit) => {
+    const nextStage = getNextPipelineStage(client.pipelineStage);
+    if (nextStage === normalizePipelineStage(client.pipelineStage)) {
+      logTerminal(`${client.name} is already at the final pipeline stage.`, 'normal');
+      return;
+    }
+    void persistPipelineStage(client, nextStage);
+  };
+
+  const handleSunsetClient = (client: ClientUnit) => {
+    if (normalizePipelineStage(client.pipelineStage) === PIPELINE_STAGE_SEQUENCE[PIPELINE_STAGE_SEQUENCE.length - 1]) {
+      logTerminal(`${client.name} is already in Sunset / Retainer.`, 'normal');
+      return;
+    }
+    void persistPipelineStage(client, PIPELINE_STAGE_SEQUENCE[PIPELINE_STAGE_SEQUENCE.length - 1]);
+  };
+
+  const handleDraftInvoice = (client: ClientUnit) => {
+    logTerminal(`Invoice draft requested for ${client.companyName || client.name}; invoice generation is not connected yet.`, 'action');
+  };
+
+  const handleFlagBlocker = (client: ClientUnit) => {
+    const message = window.prompt(`Describe the blocker for ${client.companyName || client.name}:`)?.trim();
+    if (!message) return;
+    const alert: AlfredAlert = {
+      id: `ALT-MANUAL-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      severity: 'BLOCKER',
+      subRoutine: 'Alfred',
+      clientId: client.id,
+      companyName: client.companyName || client.name,
+      message,
+      dismissed: false,
     };
+    setAlerts((previous) => [alert, ...previous]);
+    void postMasterControlAction({
+      action: 'logAlert',
+      alert: {
+        alert_id: alert.id,
+        timestamp: alert.timestamp,
+        severity: alert.severity,
+        sub_routine: alert.subRoutine,
+        client_id: alert.clientId,
+        company_name: alert.companyName,
+        message: alert.message,
+        dismissed: false,
+        raw_payload: null,
+      },
+    }).then(() => {
+      logTerminal(`Blocker recorded for ${client.companyName || client.name}.`, 'server');
+    }).catch((error: unknown) => {
+      setAlerts((previous) => previous.filter((item) => item.id !== alert.id));
+      logTerminal(error instanceof Error ? error.message : 'Master Control could not save the blocker alert.', 'alert');
+    });
+  };
 
-    setUnits((prev) => [...prev, newUnit]);
-    setSelectedUnitIds([newUnit.id]);
-    setActiveUnitId(newUnit.id);
-    logTerminal(`Client Onboarded: ${newUnit.name} added to Intake.`, 'action');
+  const handleDeleteDraftCard = (client: ClientUnit) => {
+    if (!client.isDraft) return;
+    setUnits((previous) => previous.filter((unit) => unit.id !== client.id));
+    setSelectedUnitIds((previous) => previous.filter((id) => id !== client.id));
+    if (activeUnitId === client.id) setActiveUnitId(null);
+    logTerminal(`Local draft card removed: ${client.name}.`, 'action');
   };
 
   const handleBindControlGroup = (groupNum: number) => {
@@ -364,6 +526,23 @@ export default function App() {
   }, [units, activeUnitId, selectedUnitIds, controlGroups]);
 
   const activeUnit = units.find((u) => u.id === activeUnitId) || units[0] || null;
+  const headerTelemetry: HudTelemetry = {
+    pipelineMrr: units
+      .filter((unit) => getStageNumber(unit.pipelineStage) !== 9)
+      .reduce((total, unit) => total + unit.contractValue, 0),
+    activeSprints: units.filter((unit) => {
+      const stage = getStageNumber(unit.pipelineStage);
+      return stage >= 4 && stage <= 7;
+    }).length,
+    missingDeposits: units.filter((unit) => getStageNumber(unit.pipelineStage) === 2 && !unit.depositPaid).length,
+    activeAlertsCount: alerts.filter((alert) => !alert.dismissed).length,
+    lastSynced: telemetry?.lastSynced || '',
+  };
+  const handleTerminalCommand = (command: string) => {
+    const message = `Received "${command}". Command dispatch is not connected yet.`;
+    setIntercomStatus(message);
+    logTerminal(message, 'action');
+  };
 
   if (isLoading) {
     return (
@@ -407,7 +586,8 @@ export default function App() {
       {/* Dashboard header */}
       <SkyHeader
         currentScreen={currentScreen}
-        clientCount={units.length}
+        telemetry={headerTelemetry}
+        isBackendConnected={!isLoading && !loadError}
         onSelectScreen={setCurrentScreen}
         onOpenOracle={() => setIsOracleOpen(true)}
       />
@@ -415,23 +595,28 @@ export default function App() {
       {/* Screen Views */}
       {currentScreen === 'dashboard' && (
         <main className="relative flex-1 w-full min-h-0 flex flex-col overflow-hidden">
-          {/* Collapsible client template drawer */}
-          <ClientStagingTray
-            isCollapsed={stagingCollapsed}
-            onToggleCollapse={() => setStagingCollapsed((prev) => !prev)}
-            onSpawnUnit={handleSpawnUnit}
-          />
-
-          {/* Client pipeline canvas */}
-          <KanbanCanvas
-            units={units}
-            activeUnitId={activeUnitId}
-            selectedUnitIds={selectedUnitIds}
-            onSelectUnit={handleSelectUnit}
-            onUpdateUnitPosition={handleUpdateUnitPosition}
-            gridSnapEnabled={gridSnapEnabled}
-            onLogTerminal={logTerminal}
-          />
+          <div className="flex min-h-0 flex-1">
+            <AlfredDock
+              clients={units}
+              alerts={alerts}
+              activeFilters={activeFilters}
+              onToggleFilter={handleToggleFilter}
+              onJumpToClient={handleJumpToClient}
+              onCommand={handleTerminalCommand}
+              commandFeedback={intercomStatus}
+            />
+            <KanbanCanvas
+              units={units}
+              activeFilters={activeFilters}
+              activeUnitId={activeUnitId}
+              selectedUnitIds={selectedUnitIds}
+              onSelectUnit={handleSelectUnit}
+              onUpdateUnitPosition={handleUpdateUnitPosition}
+              gridSnapEnabled={gridSnapEnabled}
+              onLogTerminal={logTerminal}
+              onOpenContextMenu={(x, y, client) => setContextMenu({ x, y, client })}
+            />
+          </div>
 
           <WorkspaceConsole
             units={units}
@@ -495,6 +680,19 @@ export default function App() {
         onClose={() => setIsOracleOpen(false)}
         onLogTerminal={logTerminal}
       />
+      {contextMenu && (
+        <CardContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          client={contextMenu.client}
+          onClose={() => setContextMenu(null)}
+          onAdvanceStage={handleAdvanceStage}
+          onDraftInvoice={handleDraftInvoice}
+          onFlagBlocker={handleFlagBlocker}
+          onSunsetClient={handleSunsetClient}
+          onDeleteDraftCard={handleDeleteDraftCard}
+        />
+      )}
       {isComplianceModalOpen && (
         <ComplianceModal
           activeUnit={activeUnit}

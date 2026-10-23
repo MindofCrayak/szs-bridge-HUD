@@ -16,11 +16,17 @@ export interface ClientUnit {
   roadblock?: string;
   notes?: string;
   contactEmail?: string;
+  companyName?: string;
+  primaryContact?: string;
+  leadSource?: string;
+  taskListId?: string;
   googleGroupEmail?: string;
   chatSpaceUrl?: string;
   notesDocUrl?: string;
   caseFileJsonUrl?: string;
+  osintGenerated?: boolean;
   driveFolderUrl?: string;
+  isDraft?: boolean;
   RootFolderID?: string | null;
   MSA_DocID?: string | null;
   ProjectFolderID?: string | null;
@@ -46,6 +52,25 @@ export interface TerminalLog {
   time: string;
   text: string;
   type: 'normal' | 'action' | 'server' | 'alert';
+}
+
+export interface HudTelemetry {
+  pipelineMrr: number;
+  activeSprints: number;
+  missingDeposits: number;
+  activeAlertsCount: number;
+  lastSynced: string;
+}
+
+export interface AlfredAlert {
+  id: string;
+  timestamp: string;
+  severity: string;
+  subRoutine: string;
+  clientId: string;
+  companyName: string;
+  message: string;
+  dismissed: boolean;
 }
 
 export type ActiveModal = CommandKey | 'MENU' | null;
