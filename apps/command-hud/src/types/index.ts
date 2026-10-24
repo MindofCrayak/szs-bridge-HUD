@@ -1,40 +1,85 @@
-export interface ClientUnit {
-  id: string;
-  name: string;
-  archetype: string;
-  serviceArea: string;
-  avatar: string;
-  contractValue: number;
-  depositPaid: boolean;
-  currentMilestone: string;
-  totalMilestones: number;
-  completedMilestones: number;
-  posX: number;
-  posY: number;
-  pipelineStage: string;
-  activePebble?: string;
-  roadblock?: string;
-  notes?: string;
-  contactEmail?: string;
-  companyName?: string;
-  primaryContact?: string;
-  leadSource?: string;
-  taskListId?: string;
-  googleGroupEmail?: string;
-  chatSpaceUrl?: string;
-  notesDocUrl?: string;
-  caseFileJsonUrl?: string;
-  osintGenerated?: boolean;
-  driveFolderUrl?: string;
-  isDraft?: boolean;
-  RootFolderID?: string | null;
-  MSA_DocID?: string | null;
-  ProjectFolderID?: string | null;
-  SOW_DocID?: string | null;
-  MeetingNotes_DriveFolderID?: string | null;
+export type AccountPhase =
+  | '01: Intake'
+  | '02: Session Zero'
+  | '03: Active Sprints'
+  | '04: Liftoff'
+  | '05: Complete'
+  | '06: Archived/Sunset';
+
+export type SprintStage =
+  | '00: Discovery'
+  | '01: Vibecheck'
+  | '02: Contract & Inception'
+  | '03: Deep Intelligence'
+  | '04: Session Zero Kickoff'
+  | '05: Architecture & Builds'
+  | '06: Mid-Flight Review'
+  | '07: Final Staging & QA'
+  | '08: Liftoff & Handover'
+  | '09: Sunset / Retainer';
+
+export interface ProjectRecord {
+  ProjectID: string;
+  ClientID: string;
+  SprintStage: SprintStage;
+  MilestonesTotal: number;
+  MilestonesDone: number;
+  AssignedRateTier: 'Normal' | 'Premium' | 'Reduced' | 'Fixed';
+  Title?: string;
 }
 
-export type ScreenView = 'dashboard' | 'pipeline' | 'osint' | 'symphony' | 'treasure' | 'archive' | 'clients' | 'actions';
+export interface ClientRecord {
+  ClientID: string;
+  Company_Name: string;
+  PrimaryContact: string;
+  ContactEmail: string;
+  AccountPhase: AccountPhase;
+  ContractValue: number;
+  DepositPaid: boolean;
+  DriveFolderUrl: string;
+  NotesDocUrl: string;
+  MSA_DocID: string;
+  SOW_DocID: string;
+  ChatSpaceUrl: string;
+  activeProjects: ProjectRecord[];
+  activePebble?: string;
+  roadblock?: string;
+  avatar?: string;
+  archetype?: string;
+  caseFileJsonUrl?: string;
+  osintGenerated?: boolean;
+  leadSource?: string;
+}
+
+export interface ClientUnit extends ClientRecord {
+  id: string;
+  name: string;
+  companyName: string;
+  pipelineStage: string;
+  totalMilestones: number;
+  completedMilestones: number;
+  currentMilestone: string;
+  serviceArea: string;
+  posX: number;
+  posY: number;
+  isDraft?: boolean;
+  RootFolderID?: string | null;
+  ProjectFolderID?: string | null;
+  MeetingNotes_DriveFolderID?: string | null;
+  taskListId?: string;
+  googleGroupEmail?: string;
+}
+
+export type ScreenView = 
+  | 'dashboard' 
+  | 'pipeline' 
+  | 'osint' 
+  | 'symphony' 
+  | 'treasure' 
+  | 'archive' 
+  | 'cockpit'
+  | 'clients' 
+  | 'actions';
 
 export type CommandKey = 'Q' | 'W' | 'E' | 'A' | 'S' | 'D' | 'Z' | 'X' | 'C';
 
