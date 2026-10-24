@@ -2,8 +2,9 @@ import React, { useState } from 'react';
 import { useCanvasTransform } from '../../hooks/useCanvasTransform';
 import { ClientRecord, ProjectRecord } from '../../types';
 import { ACCOUNT_PHASES, SPRINT_STAGES } from '../../data/pipeline';
-import { AccountPhaseColumn } from './AccountPhaseColumn';
-import { SprintStageColumn } from './SprintStageColumn';
+import { SpatialKanbanColumn, ColumnState } from './SpatialKanbanColumn';
+import { SlimVitalsCard } from './SlimVitalsCard';
+import { ProjectSprintCard } from './ProjectSprintCard';
 
 interface TacticalCanvasProps {
   clients: ClientRecord[];
@@ -15,25 +16,85 @@ interface TacticalCanvasProps {
   setScale?: (scale: number | ((prev: number) => number)) => void;
 }
 
-/**
- * Tactical Horizon Canvas
- * 1. Hardware-Accelerated Pan & Zoom using transform: translate3d(x, y, 0).
- * 2. In-Place Option A Drilldown: Default 6 AccountPhase columns.
- *    Right-click [ Sprint Stage View ] or button swaps to 10 granular SprintStage columns
- *    isolated to that client's projects.
- * 3. Breadcrumb [ GLOBAL PIPELINE ] / [ ✦ CLIENT_NAME ] to exit back to macro.
- * 4. Strict-Lock columns with [ Admin: Force Advance ] override.
- */
+const PHASE_COLORS: Record<string, string> = {
+  'phase-01': '#086375',
+  'phase-02': '#3C91E6',
+  'phase-03': '#5F0F40',
+  'phase-04': '#E0CA3C',
+  'phase-05': '#DDFBD0',
+  'phase-06': '#8A9A86',
+};
+
+// Compute default macro layout positions
+function createInitialMacroColumns(): ColumnState[] {
+  const columnWidth = 360;
+  const gap = 24;
+  const startX = 32;
+  const startY = 32;
+  const defaultHeight = 720;
+
+  return ACCOUNT_PHASES.map((p, idx) => ({
+    id: p.id,
+    title: p.title,
+    phase: p.phase,
+    badge: p.badge,
+    color: PHASE_COLORS[p.id] || '#086375',
+    x: startX + idx * (columnWidth + gap),
+    y: startY,
+    width: columnWidth,
+    height: defaultHeight,
+    isLocked: false,
+  }));
+}
+
+// Compute default granular layout positions
+function createInitialSprintColumns(): ColumnState[] {
+  const columnWidth = 280;
+  const gap = 20;
+  const startX = 32;
+  const startY = 32;
+  const defaultHeight = 680;
+
+  return SPRINT_STAGES.map((s, idx) => ({
+    id: s.id,
+    title: s.title,
+    stage: s.stage,
+    badge: s.badge,
+    color: '#5F0F40',
+    x: startX + idx * (columnWidth + gap),
+    y: startY,
+    width: columnWidth,
+    height: defaultHeight,
+    isLocked: false,
+  }));
+}
+
 export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
   clients,
   selectedClientId,
   onSelectClient,
   onOpenContextMenu,
 }) => {
-  const { viewportRef, stageRef, transformStyle, resetTransform } = useCanvasTransform(1.0);
-  
-  // Option A In-Place Drill-Down State
+  const { viewportRef, stageRef, transformStyle, resetTransform, scale } = useCanvasTransform(1.0);
+
+  // In-Place Option A Drill-Down State
   const [drillDownClient, setDrillDownClient] = useState<ClientRecord | null>(null);
+
+  // Spatial column state for Macro (6 columns) and Granular (10 columns)
+  const [macroColumns, setMacroColumns] = useState<ColumnState[]>(createInitialMacroColumns);
+  const [sprintColumns, setSprintColumns] = useState<ColumnState[]>(createInitialSprintColumns);
+
+  const handleUpdateMacroColumn = (id: string, updates: Partial<ColumnState>) => {
+    setMacroColumns((prev) =>
+      prev.map((col) => (col.id === id ? { ...col, ...updates } : col))
+    );
+  };
+
+  const handleUpdateSprintColumn = (id: string, updates: Partial<ColumnState>) => {
+    setSprintColumns((prev) =>
+      prev.map((col) => (col.id === id ? { ...col, ...updates } : col))
+    );
+  };
 
   const handleDrillDown = (client: ClientRecord) => {
     setDrillDownClient(client);
@@ -45,7 +106,7 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
   };
 
   return (
-    <div 
+    <div
       ref={viewportRef}
       className="relative flex-1 w-full h-full overflow-hidden select-none bg-[#020500] cursor-grab active:cursor-grabbing canvas-pannable-bg"
     >
@@ -65,7 +126,9 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
           <span className="text-[#086375]">/</span>
           <span className="text-[#E0CA3C] font-bold flex items-center gap-1.5">
             <span>✦ {drillDownClient.Company_Name || drillDownClient.ClientID}</span>
-            <span className="text-[#FE5F00] text-[0.65rem] px-1.5 py-0.5 bg-[#5F0F40]/70 rounded font-mono">10 STAGES</span>
+            <span className="text-[#FE5F00] text-[0.65rem] px-1.5 py-0.5 bg-[#5F0F40]/70 rounded font-mono">
+              10 STAGES
+            </span>
           </span>
           <button
             type="button"
@@ -82,39 +145,65 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
       <div
         ref={stageRef}
         style={transformStyle}
-        className="flex gap-4 p-4 min-h-full canvas-pannable-bg"
+        data-canvas-bg="true"
+        className="relative w-[5000px] h-[3000px] canvas-pannable-bg"
       >
         {!drillDownClient ? (
-          // MACRO VIEW: 6 AccountPhase Columns (01 Intake through 06 Archived/Sunset)
-          ACCOUNT_PHASES.map((phaseConfig) => {
-            const phaseClients = clients.filter((c) => c.AccountPhase === phaseConfig.phase);
+          // MACRO SPATIAL VIEW: 6 Floating, Reshapable, Lockable Columns
+          macroColumns.map((col) => {
+            const phaseClients = clients.filter((c) => c.AccountPhase === col.phase);
             return (
-              <AccountPhaseColumn
-                key={phaseConfig.id}
-                config={phaseConfig}
-                clients={phaseClients}
-                selectedClientId={selectedClientId}
-                onSelectClient={onSelectClient}
-                onDrillDown={handleDrillDown}
-                onContextMenu={(e, c) => onOpenContextMenu(e.clientX, e.clientY, c)}
-              />
+              <SpatialKanbanColumn
+                key={col.id}
+                column={col}
+                cameraZoom={scale}
+                updateColumn={handleUpdateMacroColumn}
+              >
+                {phaseClients.map((client) => (
+                  <SlimVitalsCard
+                    key={client.ClientID}
+                    client={client}
+                    isSelected={selectedClientId === client.ClientID}
+                    onSelect={() => onSelectClient(client.ClientID)}
+                    onDrillDown={handleDrillDown}
+                    onContextMenu={(e, c) => onOpenContextMenu(e.clientX, e.clientY, c)}
+                  />
+                ))}
+                {phaseClients.length === 0 && (
+                  <div className="h-28 border border-dashed border-[#086375]/30 rounded-lg flex items-center justify-center font-mono text-[0.65rem] text-[#DDFBD0]/40 text-center px-4">
+                    No active nodes in {col.title}
+                  </div>
+                )}
+              </SpatialKanbanColumn>
             );
           })
         ) : (
-          // GRANULAR VIEW: 10 SprintStage Columns (00 Discovery through 09 Sunset)
-          // Strictly filtered to drillDownClient's activeProjects
-          SPRINT_STAGES.map((stageConfig) => {
+          // GRANULAR SPATIAL VIEW: 10 Floating, Reshapable, Lockable Sprint Columns
+          sprintColumns.map((col) => {
             const stageProjects = (drillDownClient.activeProjects || []).filter(
-              (p) => p.SprintStage === stageConfig.stage
+              (p) => p.SprintStage === col.stage
             );
             return (
-              <SprintStageColumn
-                key={stageConfig.id}
-                config={stageConfig}
-                projects={stageProjects}
-                companyName={drillDownClient.Company_Name}
-                onContextMenu={(e, p) => onOpenContextMenu(e.clientX, e.clientY, p)}
-              />
+              <SpatialKanbanColumn
+                key={col.id}
+                column={col}
+                cameraZoom={scale}
+                updateColumn={handleUpdateSprintColumn}
+              >
+                {stageProjects.map((project) => (
+                  <ProjectSprintCard
+                    key={project.ProjectID}
+                    project={project}
+                    companyName={drillDownClient.Company_Name}
+                    onContextMenu={onOpenContextMenu}
+                  />
+                ))}
+                {stageProjects.length === 0 && (
+                  <div className="h-24 flex items-center justify-center font-mono text-[0.6rem] text-[#086375]/50 border border-dashed border-[#086375]/30 rounded-lg">
+                    Empty
+                  </div>
+                )}
+              </SpatialKanbanColumn>
             );
           })
         )}
