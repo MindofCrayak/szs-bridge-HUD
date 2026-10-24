@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { useCanvasTransform } from '../../hooks/useCanvasTransform';
 import { ClientRecord, ProjectRecord } from '../../types';
 import { ACCOUNT_PHASES, SPRINT_STAGES } from '../../data/pipeline';
-import { SpatialKanbanColumn, ColumnState } from './SpatialKanbanColumn';
+import SpatialKanbanColumn, { ColumnState } from './SpatialKanbanColumn';
 import { SlimVitalsCard } from './SlimVitalsCard';
 import { ProjectSprintCard } from './ProjectSprintCard';
 
@@ -27,10 +27,10 @@ const PHASE_COLORS: Record<string, string> = {
 
 // Compute default macro layout positions
 function createInitialMacroColumns(): ColumnState[] {
-  const columnWidth = 360;
+  const columnWidth = 380;
   const gap = 24;
-  const startX = 32;
-  const startY = 32;
+  const startX = 64;
+  const startY = 64;
   const defaultHeight = 720;
 
   return ACCOUNT_PHASES.map((p, idx) => ({
@@ -49,11 +49,11 @@ function createInitialMacroColumns(): ColumnState[] {
 
 // Compute default granular layout positions
 function createInitialSprintColumns(): ColumnState[] {
-  const columnWidth = 280;
+  const columnWidth = 300;
   const gap = 20;
-  const startX = 32;
-  const startY = 32;
-  const defaultHeight = 680;
+  const startX = 64;
+  const startY = 64;
+  const defaultHeight = 700;
 
   return SPRINT_STAGES.map((s, idx) => ({
     id: s.id,
@@ -75,7 +75,7 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
   onSelectClient,
   onOpenContextMenu,
 }) => {
-  const { viewportRef, stageRef, transformStyle, resetTransform, scale } = useCanvasTransform(1.0);
+  const { viewportRef, stageRef, pan, scale, isPanning, resetTransform } = useCanvasTransform(1.0);
 
   // In-Place Option A Drill-Down State
   const [drillDownClient, setDrillDownClient] = useState<ClientRecord | null>(null);
@@ -108,14 +108,15 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
   return (
     <div
       ref={viewportRef}
-      className="relative flex-1 w-full h-full overflow-hidden select-none bg-[#020500] cursor-grab active:cursor-grabbing canvas-pannable-bg"
+      data-canvas-bg="true"
+      className="relative w-full h-full overflow-hidden bg-[#020500] select-none cursor-grab active:cursor-grabbing canvas-pannable-bg"
     >
       {/* Background Tactical Grid & Scanlines */}
       <div className="crm-grid pointer-events-none absolute inset-0 opacity-40" />
 
       {/* Breadcrumb Bar (When drilled down into 10 granular stages) */}
       {drillDownClient && (
-        <div className="absolute top-3 left-4 z-30 flex items-center gap-2 font-mono text-xs bg-[#020500]/95 border border-[#E0CA3C] rounded-lg px-3 py-1.5 shadow-[0_0_20px_rgba(224,202,60,0.35)]">
+        <div className="absolute top-4 left-4 z-30 flex items-center gap-2 font-mono text-xs bg-[#020500]/95 border border-[#E0CA3C] rounded-lg px-3 py-1.5 shadow-[0_0_20px_rgba(224,202,60,0.35)]">
           <button
             type="button"
             onClick={handleExitDrillDown}
@@ -141,12 +142,21 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
         </div>
       )}
 
-      {/* Hardware-Accelerated Scalable Matrix Layer (translate3d + scale) */}
+      {/* Hardware-Accelerated 2D World Space Layer */}
       <div
         ref={stageRef}
-        style={transformStyle}
         data-canvas-bg="true"
-        className="relative w-[5000px] h-[3000px] canvas-pannable-bg"
+        style={{
+          transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${scale})`,
+          transformOrigin: '0 0',
+          position: 'absolute',
+          top: 0,
+          left: 0,
+          width: '5000px',
+          height: '3000px',
+          transition: isPanning ? 'none' : 'transform 75ms ease-out',
+        }}
+        className="canvas-world-layer pointer-events-auto"
       >
         {!drillDownClient ? (
           // MACRO SPATIAL VIEW: 6 Floating, Reshapable, Lockable Columns
@@ -213,7 +223,7 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
       <button
         type="button"
         onClick={resetTransform}
-        className="absolute bottom-3 right-4 z-20 flex items-center gap-1.5 rounded-full border border-[#086375] bg-[#020500]/85 px-3 py-1 font-mono text-[0.62rem] text-[#DDFBD0]/70 hover:border-[#E0CA3C] hover:text-[#E0CA3C] transition-all shadow-md cursor-pointer"
+        className="absolute bottom-4 right-4 z-20 flex items-center gap-1.5 rounded-full border border-[#086375] bg-[#020500]/90 px-3.5 py-1.5 font-mono text-[0.65rem] text-[#DDFBD0]/70 hover:border-[#E0CA3C] hover:text-[#E0CA3C] transition-all shadow-lg cursor-pointer"
         title="Reset canvas pan & zoom (Alt+0)"
       >
         <i className="fa-solid fa-arrows-to-dot text-xs text-[#E0CA3C]" />
@@ -222,3 +232,5 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
     </div>
   );
 };
+
+export default TacticalCanvas;
