@@ -15,6 +15,15 @@ interface TacticalCanvasProps {
   setScale?: (scale: number | ((prev: number) => number)) => void;
 }
 
+/**
+ * Tactical Horizon Canvas
+ * 1. Hardware-Accelerated Pan & Zoom using transform: translate3d(x, y, 0).
+ * 2. In-Place Option A Drilldown: Default 6 AccountPhase columns.
+ *    Right-click [ Sprint Stage View ] or button swaps to 10 granular SprintStage columns
+ *    isolated to that client's projects.
+ * 3. Breadcrumb [ GLOBAL PIPELINE ] / [ ✦ CLIENT_NAME ] to exit back to macro.
+ * 4. Strict-Lock columns with [ Admin: Force Advance ] override.
+ */
 export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
   clients,
   selectedClientId,
@@ -45,7 +54,7 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
 
       {/* Breadcrumb Bar (When drilled down into 10 granular stages) */}
       {drillDownClient && (
-        <div className="absolute top-3 left-4 z-30 flex items-center gap-2 font-mono text-xs bg-[#020500]/90 border border-[#E0CA3C] rounded-lg px-3 py-1.5 shadow-[0_0_15px_rgba(224,202,60,0.3)]">
+        <div className="absolute top-3 left-4 z-30 flex items-center gap-2 font-mono text-xs bg-[#020500]/95 border border-[#E0CA3C] rounded-lg px-3 py-1.5 shadow-[0_0_20px_rgba(224,202,60,0.35)]">
           <button
             type="button"
             onClick={handleExitDrillDown}
@@ -54,14 +63,14 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
             <span>[ GLOBAL PIPELINE ]</span>
           </button>
           <span className="text-[#086375]">/</span>
-          <span className="text-[#E0CA3C] font-bold flex items-center gap-1">
+          <span className="text-[#E0CA3C] font-bold flex items-center gap-1.5">
             <span>✦ {drillDownClient.Company_Name || drillDownClient.ClientID}</span>
-            <span className="text-[#FE5F00] text-[0.65rem] px-1 bg-[#5F0F40]/60 rounded">10 STAGES</span>
+            <span className="text-[#FE5F00] text-[0.65rem] px-1.5 py-0.5 bg-[#5F0F40]/70 rounded font-mono">10 STAGES</span>
           </span>
           <button
             type="button"
             onClick={handleExitDrillDown}
-            className="ml-2 text-xs text-[#FE5F00] hover:text-white px-1.5 py-0.2 rounded border border-[#FE5F00]/50"
+            className="ml-2 text-xs text-[#FE5F00] hover:text-white px-2 py-0.5 rounded border border-[#FE5F00]/50 hover:bg-[#FE5F00] hover:text-black transition-colors cursor-pointer"
             title="Press Esc or click to return to Macro Pipeline"
           >
             ESC ✕
@@ -69,14 +78,14 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
         </div>
       )}
 
-      {/* Scalable Matrix Layer */}
+      {/* Hardware-Accelerated Scalable Matrix Layer (translate3d + scale) */}
       <div
         ref={stageRef}
         style={transformStyle}
         className="flex gap-4 p-4 min-h-full canvas-pannable-bg"
       >
         {!drillDownClient ? (
-          // MACRO VIEW: 6 AccountPhase Columns
+          // MACRO VIEW: 6 AccountPhase Columns (01 Intake through 06 Archived/Sunset)
           ACCOUNT_PHASES.map((phaseConfig) => {
             const phaseClients = clients.filter((c) => c.AccountPhase === phaseConfig.phase);
             return (
@@ -92,7 +101,8 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
             );
           })
         ) : (
-          // GRANULAR VIEW: 10 SprintStage Columns strictly filtered to drillDownClient
+          // GRANULAR VIEW: 10 SprintStage Columns (00 Discovery through 09 Sunset)
+          // Strictly filtered to drillDownClient's activeProjects
           SPRINT_STAGES.map((stageConfig) => {
             const stageProjects = (drillDownClient.activeProjects || []).filter(
               (p) => p.SprintStage === stageConfig.stage
@@ -110,7 +120,7 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
         )}
       </div>
 
-      {/* Quick Reset Canvas HUD Pill */}
+      {/* Recenter Horizon Control Pill */}
       <button
         type="button"
         onClick={resetTransform}

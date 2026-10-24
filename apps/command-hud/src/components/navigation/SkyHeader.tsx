@@ -166,11 +166,11 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
           <button
             type="button"
             onClick={onOpenKeybindings}
-            className="flex items-center gap-1 rounded border border-accent-teal/60 bg-primary-plum/30 px-2 py-1 font-mono text-[0.61rem] text-highlight-gold hover:border-highlight-gold transition-colors"
-            title="Bridge Keybinding Orchestrator & Remapper (Press F1 or Ctrl+,)"
+            className="flex items-center gap-1.5 rounded border border-[#E0CA3C]/60 bg-[#E0CA3C]/10 px-2.5 py-1 font-mono text-[0.61rem] text-[#E0CA3C] hover:bg-[#E0CA3C] hover:text-black transition-all cursor-pointer font-bold shadow-[0_0_8px_rgba(224,202,60,0.2)]"
+            title="Master Bridge Orchestrator & Ratio Settings (⚙️ Settings / Hotkeys)"
           >
-            <i className="fa-solid fa-keyboard text-[0.6rem]" />
-            <span>HOTKEYS</span>
+            <i className="fa-solid fa-gear text-[0.65rem] animate-spin-slow" />
+            <span>⚙️ SETTINGS</span>
           </button>
         )}
 

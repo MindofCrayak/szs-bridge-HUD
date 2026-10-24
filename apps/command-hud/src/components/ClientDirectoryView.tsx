@@ -28,7 +28,7 @@ export const ClientDirectoryView: React.FC<ClientDirectoryViewProps> = ({
       ),
     [units, searchTerm]
   );
-  const pipelineValue = units.reduce((sum, client) => sum + client.contractValue, 0);
+  const pipelineValue = units.reduce((sum, client) => sum + (client?.ContractValue ?? client?.contractValue ?? 0), 0);
   const blockedCount = units.filter((client) => Boolean(client.roadblock)).length;
 
   const handleAdvanceMilestone = (client: ClientUnit) => {
@@ -124,7 +124,7 @@ export const ClientDirectoryView: React.FC<ClientDirectoryViewProps> = ({
               <span className="text-sm text-text-mana">{client.pipelineStage}</span>
               <span className="text-sm text-text-mana">{client.currentMilestone} · {client.completedMilestones}/{client.totalMilestones}</span>
               <span className="text-sm text-text-mana">
-                ${client.contractValue.toLocaleString()}
+                ${(client?.ContractValue ?? client?.contractValue ?? 0).toLocaleString()}
                 <span className="ml-1 text-xs text-text-mana/55">{client.depositPaid ? 'deposit paid' : 'deposit due'}</span>
               </span>
               <span className="truncate text-sm text-text-mana/70">{client.roadblock || 'None'}</span>

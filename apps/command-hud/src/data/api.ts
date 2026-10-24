@@ -92,11 +92,57 @@ async function runMasterControlFunction(
   return execution.response.result;
 }
 
+/**
+ * Normalizes client records from both legacy and HUD 2.0 schemas
+ * to ensure bulletproof resilience across all modals and components.
+ */
+export function normalizeClientData(c: any): any {
+  if (!c || typeof c !== 'object') return c;
+  const phase = c.AccountPhase ?? c.pipelineStage ?? '01: Intake';
+  const value = Number(c.ContractValue ?? c.contractValue ?? 0);
+  const id = String(c.ClientID ?? c.id ?? 'UNKNOWN').trim();
+  const name = String(c.Company_Name ?? c.companyName ?? c.name ?? 'Unnamed').trim();
+
+  return {
+    ...c,
+    id,
+    ClientID: id,
+    Company_Name: name,
+    companyName: name,
+    name,
+    AccountPhase: phase,
+    pipelineStage: phase,
+    ContractValue: value,
+    contractValue: value,
+    DepositPaid: Boolean(c.DepositPaid ?? c.depositPaid ?? false),
+    depositPaid: Boolean(c.DepositPaid ?? c.depositPaid ?? false),
+    PrimaryContact: String(c.PrimaryContact ?? c.primaryContact ?? ''),
+    primaryContact: String(c.PrimaryContact ?? c.primaryContact ?? ''),
+    ContactEmail: String(c.ContactEmail ?? c.contactEmail ?? ''),
+    contactEmail: String(c.ContactEmail ?? c.contactEmail ?? ''),
+    DriveFolderUrl: String(c.DriveFolderUrl ?? c.driveFolderUrl ?? ''),
+    driveFolderUrl: String(c.DriveFolderUrl ?? c.driveFolderUrl ?? ''),
+    NotesDocUrl: String(c.NotesDocUrl ?? c.notesDocUrl ?? ''),
+    notesDocUrl: String(c.NotesDocUrl ?? c.notesDocUrl ?? ''),
+    MSA_DocID: String(c.MSA_DocID ?? ''),
+    SOW_DocID: String(c.SOW_DocID ?? ''),
+    ChatSpaceUrl: String(c.ChatSpaceUrl ?? c.chatSpaceUrl ?? ''),
+    chatSpaceUrl: String(c.ChatSpaceUrl ?? c.chatSpaceUrl ?? ''),
+    activeProjects: Array.isArray(c.activeProjects) ? c.activeProjects : [],
+    totalMilestones: Number(c.totalMilestones ?? c.MilestonesTotal ?? 4),
+    completedMilestones: Number(c.completedMilestones ?? c.MilestonesDone ?? 0),
+    currentMilestone: String(c.currentMilestone ?? c.Title ?? 'Active Sprint Delivery'),
+  };
+}
+
 export async function fetchMasterControlState(
   accessToken: string,
   signal?: AbortSignal,
 ): Promise<unknown> {
-  const data = await runMasterControlFunction(accessToken, 'getHudState', [], signal);
+  const data: any = await runMasterControlFunction(accessToken, 'getHudState', [], signal);
+  if (data && typeof data === 'object' && Array.isArray(data.clients)) {
+    data.clients = data.clients.map(normalizeClientData);
+  }
   return { status: 200, message: 'success', data };
 }
 

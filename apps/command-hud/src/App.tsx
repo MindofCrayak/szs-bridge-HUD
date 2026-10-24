@@ -271,11 +271,23 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
       setSelectedClientId(null);
       return;
     }
+    // Check if slot was explicitly bound in controlGroups
+    const boundIds = controlGroups[slot];
+    if (boundIds && boundIds.length > 0) {
+      const found = clients.find((c) => c.ClientID === boundIds[0]);
+      if (found) {
+        setSelectedClientId(found.ClientID);
+        setActiveGroupNum(slot);
+        return;
+      }
+    }
+    // Fallback to array index if not bound
     const target = clients[slot - 1];
     if (target) {
       setSelectedClientId(target.ClientID);
+      setActiveGroupNum(slot);
     }
-  }, [clients]);
+  }, [clients, controlGroups]);
 
   useBridgeKeybindings({
     keymap,
