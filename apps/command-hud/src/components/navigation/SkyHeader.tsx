@@ -18,7 +18,7 @@ interface SkyHeaderProps {
   onSpawnCockpit?: () => void;
 }
 
-const routeButtonClass = (isActive: boolean): string => `flex items-center gap-1 rounded px-2 py-1 font-display text-[0.62rem] font-bold transition-all ${
+const routeButtonClass = (isActive: boolean): string => `flex items-center gap-1 rounded px-2 py-1 font-display text-[0.62rem] font-bold transition-all cursor-pointer ${
   isActive
     ? 'border border-alert-orange bg-alert-orange text-bg-obsidian'
     : 'text-text-mana/75 hover:bg-accent-teal/40 hover:text-text-mana'
@@ -54,18 +54,23 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isZoomPopoverOpen]);
 
-  const defaultSpawnCockpit = () => {
+  // Dedicated Browser Popup Window Launcher for Display 2 (762x1366)
+  const handleSpawnCockpit = () => {
     const width = 762;
     const height = 1366;
     const left = window.screen.availLeft + window.screen.width;
     const top = window.screen.availTop;
-
     const windowFeatures = `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=yes`;
-    window.open('/cockpit', 'SZS_AvionicsCockpit', windowFeatures);
+
+    const popup = window.open('/cockpit', 'SZS_AvionicsCockpit', windowFeatures);
+    if (!popup || popup.closed || typeof popup.closed === 'undefined') {
+      // If browser blocked popup, fallback to in-app screen switch
+      onSpawnCockpit?.();
+    }
   };
 
   return (
-    <header className="relative z-20 flex flex-wrap items-center justify-between gap-3 border-b border-accent-teal/60 bg-bg-obsidian/95 px-4 py-2 shadow-md">
+    <header className="relative z-20 flex flex-wrap items-center justify-between gap-3 border-b border-accent-teal/60 bg-bg-obsidian/95 px-4 py-2 shadow-md select-none">
       <div className="flex items-center gap-3">
         <button
           className="h-8 rounded-md bg-alert-orange px-2 font-serif-display text-sm font-bold text-bg-obsidian transition-transform hover:scale-105 cursor-pointer"
@@ -85,13 +90,14 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
-        <nav aria-label="Viewport switcher" className="flex items-center gap-1 rounded-lg border border-accent-teal bg-primary-plum/50 p-1 shadow-inner">
+        {/* Navigation Switcher: 5 Top Department Tabs */}
+        <nav aria-label="Department canvases" className="flex items-center gap-1 rounded-lg border border-accent-teal/60 p-1">
           <button
             type="button"
             onClick={() => onSelectScreen('dashboard')}
             aria-pressed={currentScreen === 'dashboard'}
             className={`${routeButtonClass(currentScreen === 'dashboard')} px-2 sm:px-2.5`}
-            title="1. Tactical 4-Column Kanban Pipeline (Alt+1)"
+            title="1. Tactical Kanban Pipeline (Alt+1)"
           >
             <i className="fa-solid fa-diagram-project" />
             <span>1. PIPELINE</span>
@@ -138,6 +144,7 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
           </button>
         </nav>
 
+        {/* Directory, Overview, Actions navigation */}
         <nav aria-label="HUD sections" className="flex items-center gap-0.5 rounded-lg border border-accent-teal/60 p-1">
           <button type="button" onClick={() => onSelectScreen('pipeline')} className={routeButtonClass(currentScreen === 'pipeline')} title="Pipeline summary">
             OVERVIEW
@@ -150,6 +157,7 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
           </button>
         </nav>
 
+        {/* Departments Drawer Button */}
         <button
           type="button"
           onClick={onOpenDepartments}
@@ -162,14 +170,15 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
           <span>DEPARTMENTS</span>
         </button>
 
+        {/* Unified Settings Gear Button (De-duplicated) */}
         {onOpenKeybindings && (
           <button
             type="button"
             onClick={onOpenKeybindings}
             className="flex items-center gap-1.5 rounded border border-[#E0CA3C]/60 bg-[#E0CA3C]/10 px-2.5 py-1 font-mono text-[0.61rem] text-[#E0CA3C] hover:bg-[#E0CA3C] hover:text-black transition-all cursor-pointer font-bold shadow-[0_0_8px_rgba(224,202,60,0.2)]"
-            title="Master Bridge Orchestrator & Ratio Settings (⚙️ Settings / Hotkeys)"
+            title="Unified System Settings & Ergonomics Engine"
           >
-            <i className="fa-solid fa-gear text-[0.65rem] animate-spin-slow" />
+            <i className="fa-solid fa-gear text-[0.65rem]" />
             <span>⚙️ SETTINGS</span>
           </button>
         )}
@@ -193,7 +202,7 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
           </button>
 
           {isZoomPopoverOpen && (
-            <div className="absolute right-0 top-full mt-2 w-64 rounded-xl border border-accent-teal/80 bg-bg-obsidian/95 p-3.5 shadow-[0_12px_32px_rgba(0,0,0,0.9),0_0_15px_rgba(8,99,117,0.5)] backdrop-blur-md z-50 animate-in fade-in slide-in-from-top-1 duration-150">
+            <div className="absolute right-0 top-full mt-2 w-64 rounded-xl border border-accent-teal/80 bg-bg-obsidian/98 p-3.5 shadow-[0_12px_32px_rgba(0,0,0,0.9),0_0_15px_rgba(8,99,117,0.5)] backdrop-blur-md z-50 animate-in fade-in slide-in-from-top-1 duration-150">
               <div className="flex items-center justify-between text-[11px] font-mono text-text-mana mb-2 border-b border-accent-teal/40 pb-1.5">
                 <span className="font-bold tracking-wider uppercase text-[0.65rem]">Tactical Scale</span>
                 <span className="text-highlight-gold font-bold text-xs">{Math.round(zoomScale * 100)}%</span>
@@ -212,7 +221,7 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
                 />
                 <div className="flex justify-between text-[9px] font-mono text-text-mana/50 mt-1">
                   <span>60% (Macro)</span>
-                  <span>100%</span>
+                  <span>100% (Default)</span>
                   <span>140% (Focus)</span>
                 </div>
               </div>
@@ -222,7 +231,7 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
                 <button
                   type="button"
                   onClick={() => onSetZoom?.(0.65)}
-                  className="px-2 py-1 rounded border border-accent-teal/60 bg-accent-teal/15 text-text-mana hover:border-accent-teal hover:bg-accent-teal/30 transition-colors"
+                  className="px-2 py-1 rounded border border-accent-teal/60 bg-accent-teal/15 text-text-mana hover:border-accent-teal hover:bg-accent-teal/30 transition-colors cursor-pointer"
                 >
                   65%
                 </button>
@@ -232,14 +241,14 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
                     if (onResetZoom) onResetZoom();
                     else onSetZoom?.(1.0);
                   }}
-                  className="px-2 py-1 rounded border border-highlight-gold/60 bg-highlight-gold/20 text-highlight-gold font-bold hover:bg-highlight-gold/30 transition-colors"
+                  className="px-2 py-1 rounded border border-highlight-gold/60 bg-highlight-gold/20 text-highlight-gold font-bold hover:bg-highlight-gold/30 transition-colors cursor-pointer"
                 >
                   100%
                 </button>
                 <button
                   type="button"
                   onClick={() => onSetZoom?.(1.25)}
-                  className="px-2 py-1 rounded border border-accent-teal/60 bg-accent-teal/15 text-text-mana hover:border-accent-teal hover:bg-accent-teal/30 transition-colors"
+                  className="px-2 py-1 rounded border border-accent-teal/60 bg-accent-teal/15 text-text-mana hover:border-accent-teal hover:bg-accent-teal/30 transition-colors cursor-pointer"
                 >
                   125%
                 </button>
@@ -267,7 +276,7 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
           <button
             type="button"
             onClick={onToggleSkin}
-            className="flex items-center gap-1 rounded border border-accent-teal/60 bg-primary-plum/30 px-2 py-1 font-mono text-[0.61rem] text-text-mana/80 hover:border-highlight-gold hover:text-highlight-gold transition-colors"
+            className="flex items-center gap-1 rounded border border-accent-teal/60 bg-primary-plum/30 px-2 py-1 font-mono text-[0.61rem] text-text-mana/80 hover:border-highlight-gold hover:text-highlight-gold transition-colors cursor-pointer"
             title={`Chassis Skin: ${currentSkin === 'heraldry-gold' ? 'Heraldry Gold' : 'Stealth Obsidian'} - Click to toggle`}
           >
             <i className={`fa-solid ${currentSkin === 'heraldry-gold' ? 'fa-shield-halved text-highlight-gold' : 'fa-ghost text-accent-teal'}`} />
@@ -278,7 +287,7 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
         {/* Display 2: Spawn Cockpit Pop-Out Toggle */}
         <button
           type="button"
-          onClick={onSpawnCockpit || defaultSpawnCockpit}
+          onClick={handleSpawnCockpit}
           className="flex items-center gap-1.5 px-2.5 py-1 rounded border border-[#E0CA3C] bg-[#E0CA3C]/10 text-[#E0CA3C] hover:bg-[#E0CA3C] hover:text-black transition-all font-mono text-xs font-bold shadow-[0_0_10px_rgba(224,202,60,0.2)] cursor-pointer"
           title="Open Avionics Cockpit UI on Secondary Monitor (762x1366)"
         >
@@ -296,26 +305,34 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
         </button>
       </div>
 
+      {/* Persistent Telemetry Ribbon Indicators */}
       <div className="flex flex-wrap items-center justify-end gap-1.5 font-mono text-[0.61rem]">
         <div className="flex items-center gap-1.5 rounded border border-accent-teal bg-primary-plum/45 px-2 py-1 text-gold" title="Total contract value of active clients">
-          <i className="fa-solid fa-chart-column" />
-          <span>PIPELINE: {telemetry ? `$${telemetry.pipelineMrr.toLocaleString()}` : '—'}</span>
+          <i className="fa-solid fa-chart-line text-accent-teal" />
+          <span>PIPELINE: ${telemetry ? telemetry.pipelineMrr.toLocaleString() : '0'}</span>
         </div>
-        <div className="flex items-center gap-1.5 rounded border border-accent-teal bg-primary-plum/45 px-2 py-1 text-text-mana" title="Active Sprints in Delivery">
-          <i className="fa-solid fa-list-check text-radar" />
-          <span>SPRINTS: {telemetry?.activeSprints ?? '—'}</span>
+        <div className="flex items-center gap-1.5 rounded border border-accent-teal bg-primary-plum/45 px-2 py-1 text-text-mana" title="Clients in building or testing stages">
+          <i className="fa-solid fa-layer-group text-accent-teal" />
+          <span>SPRINTS: {telemetry ? telemetry.activeSprints : 0}</span>
         </div>
-        <div className="flex items-center gap-1.5 rounded border border-accent-teal bg-primary-plum/45 px-2 py-1 text-plasma" title="Deposits Gated by The Iron Gate">
+        <div
+          className={`flex items-center gap-1.5 rounded border px-2 py-1 ${
+            telemetry && telemetry.missingDeposits > 0
+              ? 'border-alert-orange bg-primary-plum/70 text-alert-orange'
+              : 'border-accent-teal bg-primary-plum/45 text-text-mana/70'
+          }`}
+          title="Clients in Session Zero missing upfront deposit"
+        >
           <i className="fa-solid fa-triangle-exclamation" />
-          <span>DEP DUE: {telemetry?.missingDeposits ?? '—'}</span>
+          <span>DEP DUE: {telemetry ? telemetry.missingDeposits : 0}</span>
         </div>
-        <div className="flex items-center gap-1.5 rounded border border-accent-teal bg-primary-plum/45 px-2 py-1 text-text-mana" title="Google Analytics 4 Live Realtime Stream (sessionzero.solutions)">
-          <i className="fa-solid fa-chart-line text-highlight-gold" />
+        <div className="flex items-center gap-1.5 rounded border border-accent-teal bg-primary-plum/45 px-2 py-1 text-text-mana/70">
+          <i className="fa-solid fa-signal text-accent-teal" />
           <span>GA4: 14 LIVE</span>
         </div>
-        <div className="flex items-center gap-1.5 rounded border border-accent-teal bg-primary-plum/45 px-2 py-1 text-text-mana" role="status">
-          <span className={`h-2 w-2 rounded-full ${isBackendConnected ? 'animate-pulse-glow bg-text-mana shadow-[0_0_8px_#DDFBD0]' : 'bg-plasma'}`} />
-          <span>{isBackendConnected ? 'POLICE ENGINE NOMINAL' : 'ENGINE OFFLINE'}</span>
+        <div className="flex items-center gap-1.5 rounded border border-accent-teal bg-primary-plum/45 px-2 py-1 text-text-mana/70">
+          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
+          <span>POLICE ENGINE NOMINAL</span>
         </div>
       </div>
     </header>

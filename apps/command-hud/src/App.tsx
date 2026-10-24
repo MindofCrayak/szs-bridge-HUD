@@ -389,13 +389,6 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
         {/* Viewport 1: Tactical Horizon (Dashboard) */}
         {currentScreen === 'dashboard' && (
           <div className="flex-1 flex flex-col min-h-0 relative overflow-hidden">
-            {/* Department Header Tray (<120px) with Cycling Persona Notes */}
-            <DepartmentHeaderTray
-              activeSprintCount={headerTelemetry.activeSprints}
-              totalMrr={headerTelemetry.pipelineMrr}
-              activeClientName={activeClient?.Company_Name}
-            />
-
             {/* Tactical Canvas: Infinite Pan/Zoom & Option A Sprint Drill-Down */}
             <TacticalCanvas
               clients={clients}
@@ -459,7 +452,12 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
         {/* Display 2: Avionics Cockpit View (762×1366 Portrait) */}
         {currentScreen === 'cockpit' && (
           <div className="flex-1 flex items-center justify-center p-4 bg-[#020500] overflow-y-auto">
-            <AvionicsCockpitView onClose={() => setCurrentScreen('dashboard')} />
+            <AvionicsCockpitView
+              onClose={() => setCurrentScreen('dashboard')}
+              activeSprintCount={headerTelemetry.activeSprints}
+              totalMrr={headerTelemetry.pipelineMrr}
+              activeClientName={activeClient?.Company_Name}
+            />
           </div>
         )}
 

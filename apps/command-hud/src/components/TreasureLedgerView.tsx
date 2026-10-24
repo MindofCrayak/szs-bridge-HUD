@@ -25,9 +25,9 @@ export const TreasureLedgerView: React.FC<TreasureLedgerViewProps> = ({
   const currentClient = activeUnit || units[0] || null;
   const [invoiceType, setInvoiceType] = useState<'deposit' | 'midterm' | 'completion'>('deposit');
 
-  const totalPipelineValue = units.reduce((acc, u) => acc + (u.contractValue || 0), 0);
+  const totalPipelineValue = units.reduce((acc, u) => acc + (u?.ContractValue ?? u?.contractValue ?? 0), 0);
   const paidDeposits = units.filter((u) => u.depositPaid);
-  const totalPaidDeposits = paidDeposits.reduce((acc, u) => acc + (u.contractValue * 0.5), 0);
+  const totalPaidDeposits = paidDeposits.reduce((acc, u) => acc + ((u?.ContractValue ?? u?.contractValue ?? 0) * 0.5), 0);
   const pendingDeposits = units.filter((u) => !u.depositPaid);
   const totalPendingDeposits = pendingDeposits.reduce((acc, u) => acc + (u.contractValue * 0.5), 0);
 
@@ -126,7 +126,7 @@ export const TreasureLedgerView: React.FC<TreasureLedgerViewProps> = ({
                         <span className="block font-bold">{u.companyName || u.name}</span>
                         <span className="text-[0.6rem] text-text-mana/50">{u.id} · {u.pipelineStage}</span>
                       </td>
-                      <td className="py-2.5 px-2">{currencyFormatter.format(u.contractValue)}</td>
+                      <td className="py-2.5 px-2">{currencyFormatter.format(u?.ContractValue ?? u?.contractValue ?? 0)}</td>
                       <td className="py-2.5 px-2 font-bold">{currencyFormatter.format(depositDue)}</td>
                       <td className="py-2.5 px-2">
                         <span className={`px-2 py-0.5 rounded text-[0.65rem] font-bold ${
@@ -201,7 +201,7 @@ export const TreasureLedgerView: React.FC<TreasureLedgerViewProps> = ({
               <div className="p-3 rounded-lg bg-bg-obsidian border border-accent-teal/30 space-y-1.5">
                 <div className="flex justify-between text-text-mana/70">
                   <span>Contract Baseline:</span>
-                  <span className="text-text-mana">{currencyFormatter.format(currentClient?.contractValue || 0)}</span>
+                  <span className="text-text-mana">{currencyFormatter.format((currentClient?.ContractValue ?? currentClient?.contractValue ?? 0) || 0)}</span>
                 </div>
                 <div className="flex justify-between text-text-mana/70">
                   <span>Tranche Ratio:</span>

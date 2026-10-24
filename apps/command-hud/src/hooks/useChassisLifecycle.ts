@@ -16,14 +16,13 @@ export interface ChassisLifecycleReturn {
 }
 
 /**
- * Interruptible 5-Stage Boot Timeline (Stages 0 - 4)
- * Stage 0: Base boot (silent, frame initialization)
- * Stage 1: Right in (Bay 4 Macro Pad & Bay 3 Dossier slide up)
- * Stage 2: Left in (Bay 1 Calendar slides in)
- * Stage 3: Center drops (Bay 2 Alfred Terminal drops from above)
- * Stage 4: Online Sync (All bays link, telemetry hum nominal)
- *
- * Bypass: Keydown or click clears timeouts, snaps to 4, and plays spark.
+ * useChassisLifecycle
+ * 1. Immediate Boot Routine: Initiates immediately on component mount (no click needed).
+ * 2. Autoplay Audio Safety: Wrapped in try/catch with one-time user interaction fallback
+ *    so React timeline reaches Stage 4 without hanging if AudioContext is blocked.
+ * 3. 5-Stage Staging:
+ *    Stage 0 (Init) -> Stage 1 (Right pods in) -> Stage 2 (Left in) -> Stage 3 (Center drops) -> Stage 4 (Online Sync).
+ * 4. Bypass: Any key or click clears timers and snaps to Stage 4.
  */
 export function useChassisLifecycle(): ChassisLifecycleReturn {
   const [bootStage, setBootStage] = useState<BootStage>(0);
@@ -41,57 +40,76 @@ export function useChassisLifecycle(): ChassisLifecycleReturn {
     clearAllTimers();
     setBootStage(4);
     setIsBypassed(true);
-    playBypassSpark();
+    try {
+      playBypassSpark();
+    } catch {}
   }, [bootStage, clearAllTimers]);
 
   useEffect(() => {
     if (hasInitializedRef.current) return;
     hasInitializedRef.current = true;
 
-    // Start background hum once active
-    const stopHum = startBackgroundHum();
+    // Start background hum safely
+    let stopHum: () => void = () => {};
+    try {
+      stopHum = startBackgroundHum();
+    } catch {}
 
-    // Schedule progressive stages
-    // 0 -> 1: 150ms
+    // Fallback: resume audio context on first interaction if blocked by autoplay policy
+    const handleFirstInteraction = () => {
+      try {
+        const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioContextClass) {
+          const ctx = new AudioContextClass();
+          if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+        }
+      } catch {}
+      window.removeEventListener('pointerdown', handleFirstInteraction);
+      window.removeEventListener('keydown', handleFirstInteraction);
+    };
+    window.addEventListener('pointerdown', handleFirstInteraction, { once: true });
+    window.addEventListener('keydown', handleFirstInteraction, { once: true });
+
+    // Staging Timeline: Guaranteed auto-advancement
+    // 0 -> 1: 100ms
     const t1 = window.setTimeout(() => {
       setBootStage(1);
-      playMechanicalClunk(90, 0.08);
-    }, 150);
+      try { playMechanicalClunk(90, 0.08); } catch {}
+    }, 100);
 
-    // 1 -> 2: 450ms
+    // 1 -> 2: 350ms
     const t2 = window.setTimeout(() => {
       setBootStage(2);
-      playMechanicalClunk(130, 0.08);
-    }, 450);
+      try { playMechanicalClunk(130, 0.08); } catch {}
+    }, 350);
 
-    // 2 -> 3: 750ms
+    // 2 -> 3: 650ms
     const t3 = window.setTimeout(() => {
       setBootStage(3);
-      playMechanicalClunk(180, 0.09);
-    }, 750);
+      try { playMechanicalClunk(180, 0.09); } catch {}
+    }, 650);
 
-    // 3 -> 4: 1050ms
+    // 3 -> 4: 950ms (Fully Online)
     const t4 = window.setTimeout(() => {
       setBootStage(4);
-      playPowerUpGlide();
-    }, 1050);
+      try { playPowerUpGlide(); } catch {}
+    }, 950);
 
     timersRef.current = [t1, t2, t3, t4];
 
-    // Global keydown bypass listener
+    // Global keydown bypass
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Don't intercept inputs or functional keys if user is typing
       if (bootStage < 4) {
         bypassBoot();
       }
     };
-
     window.addEventListener('keydown', handleKeyDown, { capture: true });
 
     return () => {
       clearAllTimers();
       window.removeEventListener('keydown', handleKeyDown, { capture: true });
-      stopHum();
+      window.removeEventListener('pointerdown', handleFirstInteraction);
+      try { stopHum(); } catch {}
     };
   }, [bypassBoot, clearAllTimers]);
 

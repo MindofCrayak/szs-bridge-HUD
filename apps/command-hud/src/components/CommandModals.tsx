@@ -175,10 +175,10 @@ export const CommandModals: React.FC<CommandModalsProps> = ({
                 {activeUnit && (
                   <div className="mt-2 space-y-1 text-sm text-text-mana/70">
                     <div>{activeUnit.contactEmail || 'No email address saved'}</div>
-                    <div>Contract: ${activeUnit.contractValue.toLocaleString()}</div>
+                    <div>Contract: ${(activeUnit?.ContractValue ?? activeUnit?.contractValue ?? 0).toLocaleString()}</div>
                     {activeModal === 'S' && (
                       <div>
-                        One-third reference: ${(Math.round((activeUnit.contractValue / 3) * 100) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        One-third reference: ${(Math.round(((activeUnit?.ContractValue ?? activeUnit?.contractValue ?? 0) / 3) * 100) / 100).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                       </div>
                     )}
                     {activeModal === 'S' && (

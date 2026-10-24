@@ -52,7 +52,7 @@ export const DepartmentConsole: React.FC<DepartmentConsoleProps> = ({
   const [department, setDepartment] = useState<DepartmentId>('alfred');
   const [command, setCommand] = useState('');
   const [commandStatus, setCommandStatus] = useState('');
-  const activeClients = units.filter((unit) => getStageNumber(unit.pipelineStage) !== 9);
+  const activeClients = units.filter((unit) => getStageNumber(String(unit?.AccountPhase ?? unit?.pipelineStage ?? '')) !== 9);
   const missingComplianceRecords = activeClients.filter(
     (unit) => REQUIRED_IDS.some((field) => !isPresent(unit[field])),
   ).length;
@@ -150,7 +150,7 @@ export const DepartmentConsole: React.FC<DepartmentConsoleProps> = ({
     }
 
     if (department === 'vala') {
-      const outstandingValue = outstandingDeposits.reduce((total, unit) => total + unit.contractValue, 0);
+      const outstandingValue = outstandingDeposits.reduce((total, unit) => total + (unit?.ContractValue ?? unit?.contractValue ?? 0), 0);
       return (
         <>
           <div className="grid grid-cols-2 gap-3">

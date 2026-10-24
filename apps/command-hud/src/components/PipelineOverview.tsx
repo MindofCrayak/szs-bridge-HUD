@@ -15,7 +15,7 @@ export const PipelineOverview: React.FC<PipelineOverviewProps> = ({
   onNavigateToDashboard,
   onLogTerminal,
 }) => {
-  const activeUnits = units.filter((unit) => normalizePipelineStage(unit.pipelineStage) !== '09: Sunset / Retainer');
+  const activeUnits = units.filter((unit) => normalizePipelineStage(String(unit?.AccountPhase ?? unit?.pipelineStage ?? '')) !== '09: Sunset / Retainer');
   return (
   <main className="min-h-0 flex-1 overflow-x-auto overflow-y-hidden bg-bg-obsidian p-5">
     <div className="mb-4 flex items-end justify-between">
@@ -27,7 +27,7 @@ export const PipelineOverview: React.FC<PipelineOverviewProps> = ({
     </div>
     <div className="grid h-[calc(100%-4rem)] min-w-[900px] grid-cols-4 gap-3">
       {PIPELINE_COLUMNS.map((column, columnIndex) => {
-        const clients = activeUnits.filter((client) => getPipelineColumnIndex(client.pipelineStage) === columnIndex);
+        const clients = activeUnits.filter((client) => getPipelineColumnIndex(String(client?.AccountPhase ?? client?.pipelineStage ?? '')) === columnIndex);
         return (
           <section key={column.id} className="flex min-h-0 flex-col rounded-xl border border-accent-teal bg-primary-plum/25">
             <div className="flex items-center justify-between border-b border-accent-teal/50 bg-primary-plum/70 px-3 py-2">
@@ -73,7 +73,7 @@ export const PipelineOverview: React.FC<PipelineOverviewProps> = ({
                         {client.roadblock}
                       </div>
                     )}
-                    <div className="mt-2 font-mono text-xs text-text-mana/65">${client.contractValue.toLocaleString()}</div>
+                    <div className="mt-2 font-mono text-xs text-text-mana/65">${(client?.ContractValue ?? client?.contractValue ?? 0).toLocaleString()}</div>
                   </button>
                 );
               })}
