@@ -207,7 +207,7 @@ export const AlfredDock: React.FC<AlfredDockProps> = ({
       {!collapsed && (
         <div
           onClick={toggleCollapse}
-          className="fixed inset-0 top-[56px] bg-black/60 backdrop-blur-[2px] z-40 transition-opacity animate-in fade-in duration-200"
+          className="fixed inset-0 top-[56px] bg-black/60 backdrop-blur-[2px] z-30 transition-opacity animate-in fade-in duration-200"
           aria-hidden="true"
         />
       )}
@@ -215,9 +215,9 @@ export const AlfredDock: React.FC<AlfredDockProps> = ({
       {/* Full Floating Overlay Drawer */}
       <aside
         ref={drawerRef}
-        className={`fixed left-0 top-[56px] bottom-0 z-50 flex flex-col border-r border-accent-teal bg-bg-obsidian/95 backdrop-blur-md text-text-mana transition-all duration-300 ease-in-out select-none ${
+        className={`${collapsed ? 'relative' : 'absolute left-0 top-0 bottom-0'} z-40 h-full flex flex-col border-r border-accent-teal bg-bg-obsidian/95 backdrop-blur-md text-text-mana transition-all duration-300 ease-in-out select-none ${
           collapsed
-            ? 'w-[52px] shadow-none'
+            ? 'w-[52px] shadow-none flex-shrink-0'
             : 'w-80 shadow-[8px_0_32px_rgba(0,0,0,0.85)]'
         }`}
       >

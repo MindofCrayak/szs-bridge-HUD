@@ -15,6 +15,7 @@ interface SkyHeaderProps {
   onOpenKeybindings?: () => void;
   currentSkin?: string;
   onToggleSkin?: () => void;
+  onSpawnCockpit?: () => void;
 }
 
 const routeButtonClass = (isActive: boolean): string => `flex items-center gap-1 rounded px-2 py-1 font-display text-[0.62rem] font-bold transition-all ${
@@ -37,6 +38,7 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
   onOpenKeybindings,
   currentSkin = 'heraldry-gold',
   onToggleSkin,
+  onSpawnCockpit,
 }) => {
   const [isZoomPopoverOpen, setIsZoomPopoverOpen] = React.useState(false);
   const zoomPopoverRef = React.useRef<HTMLDivElement>(null);
@@ -51,6 +53,17 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isZoomPopoverOpen]);
+
+  const defaultSpawnCockpit = () => {
+    const width = 762;
+    const height = 1366;
+    const left = window.screen.availLeft + window.screen.width;
+    const top = window.screen.availTop;
+
+    const windowFeatures = `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=yes`;
+    window.open('/cockpit', 'SZS_AvionicsCockpit', windowFeatures);
+  };
+
   return (
     <header className="relative z-20 flex flex-wrap items-center justify-between gap-3 border-b border-accent-teal/60 bg-bg-obsidian/95 px-4 py-2 shadow-md">
       <div className="flex items-center gap-3">
@@ -136,6 +149,7 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
             ACTIONS
           </button>
         </nav>
+
         <button
           type="button"
           onClick={onOpenDepartments}
@@ -260,6 +274,17 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
             <span className="uppercase">{currentSkin === 'heraldry-gold' ? 'GOLD' : 'STEALTH'}</span>
           </button>
         )}
+
+        {/* Display 2: Spawn Cockpit Pop-Out Toggle */}
+        <button
+          type="button"
+          onClick={onSpawnCockpit || defaultSpawnCockpit}
+          className="flex items-center gap-1.5 px-2.5 py-1 rounded border border-[#E0CA3C] bg-[#E0CA3C]/10 text-[#E0CA3C] hover:bg-[#E0CA3C] hover:text-black transition-all font-mono text-xs font-bold shadow-[0_0_10px_rgba(224,202,60,0.2)] cursor-pointer"
+          title="Open Avionics Cockpit UI on Secondary Monitor (762x1366)"
+        >
+          <i className="fa-solid fa-arrow-up-right-from-square text-[0.6rem]" />
+          <span>SPAWN COCKPIT [762×1366]</span>
+        </button>
 
         <button
           type="button"

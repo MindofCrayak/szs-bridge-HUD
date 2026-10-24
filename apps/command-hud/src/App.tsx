@@ -30,6 +30,7 @@ import { DEMO_CLIENT_UNITS, DEMO_ALERTS, DEMO_TELEMETRY } from './data/demoFleet
 import { useCanvasZoomPan } from './hooks/useCanvasZoomPan';
 import { useBridgeKeybindings, loadStoredKeymap, KeymapConfig } from './hooks/useBridgeKeybindings';
 import { KeybindingSettingsModal } from './components/KeybindingSettingsModal';
+import { TacticalCanvas } from './components/TacticalCanvas';
 
 const toText = (value: unknown): string => value == null ? '' : String(value);
 
@@ -816,24 +817,20 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
               isCollapsed={isSidebarCollapsed}
               onToggleCollapse={() => setIsSidebarCollapsed((prev) => !prev)}
             />
-            <div 
-              ref={canvasContainerRef} 
-              className="flex-1 min-h-0 min-w-0 overflow-hidden relative cursor-default"
-            >
-              <div style={canvasStyle} className="origin-top-left">
-                <KanbanCanvas
-                  units={units}
-                  activeFilters={activeFilters}
-                  activeUnitId={activeUnitId}
-                  selectedUnitIds={selectedUnitIds}
-                  onSelectUnit={handleSelectUnit}
-                  onUpdateUnitPosition={handleUpdateUnitPosition}
-                  gridSnapEnabled={gridSnapEnabled}
-                  onLogTerminal={logTerminal}
-                  onOpenContextMenu={(x, y, client) => setContextMenu({ x, y, client })}
-                />
-              </div>
-            </div>
+            <TacticalCanvas scale={canvasScale} setScale={setCanvasScale}>
+              <KanbanCanvas
+                units={units}
+                activeFilters={activeFilters}
+                activeUnitId={activeUnitId}
+                selectedUnitIds={selectedUnitIds}
+                flashedUnitIds={flashedUnitIds}
+                onSelectUnit={handleSelectUnit}
+                onUpdateUnitPosition={handleUpdateUnitPosition}
+                gridSnapEnabled={gridSnapEnabled}
+                onLogTerminal={logTerminal}
+                onOpenContextMenu={(x, y, client) => setContextMenu({ x, y, client })}
+              />
+            </TacticalCanvas>
           </div>
 
           <WorkspaceConsole
@@ -846,6 +843,7 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
             onTriggerCommand={handleTriggerCommand}
             complianceRequestId={complianceRequestId}
             onLogTerminal={logTerminal}
+            onUpdateUnit={handleUpdateUnit}
           />
           {isDepartmentConsoleOpen && (
             <DepartmentConsole
