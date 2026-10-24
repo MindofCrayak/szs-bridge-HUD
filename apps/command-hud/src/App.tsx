@@ -4,6 +4,7 @@
  */
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { TokenResponse } from '@react-oauth/google';
 import { AlfredAlert, ClientUnit, CommandKey, ActiveModal, HudTelemetry, ScreenView, TerminalLog } from './types';
 import { COMMAND_ABILITIES } from './data/initialFleet';
 import { SkyHeader } from './components/SkyHeader';
@@ -16,6 +17,7 @@ import { PipelineOverview } from './components/PipelineOverview';
 import { ClientDirectoryView } from './components/ClientDirectoryView';
 import { MacroMatrixView } from './components/MacroMatrixView';
 import { ComplianceModal } from './components/ComplianceModal';
+import { GoogleSignIn } from './components/GoogleSignIn';
 import { DepartmentConsole, DepartmentId } from './components/DepartmentConsole';
 import { fetchMasterControlState, postMasterControlAction } from './data/api';
 import { getNextPipelineStage, normalizePipelineStage, PIPELINE_STAGE_SEQUENCE } from './data/pipeline';
@@ -99,6 +101,9 @@ export default function App() {
   const [selectedUnitIds, setSelectedUnitIds] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [oauthError, setOAuthError] = useState<string | null>(null);
+  const [accessToken, setAccessToken] = useState<string | null>(null);
+  const [tokenExpiresAt, setTokenExpiresAt] = useState<number | null>(null);
   const [fetchAttempt, setFetchAttempt] = useState(0);
   const [controlGroups, setControlGroups] = useState<Record<number, string[]>>({
     1: [],
@@ -130,11 +135,15 @@ export default function App() {
     const controller = new AbortController();
 
     const loadClients = async () => {
+      if (!accessToken) {
+        setIsLoading(false);
+        return;
+      }
       setIsLoading(true);
       setLoadError(null);
 
       try {
-        const responseData: unknown = await fetchMasterControlState();
+        const responseData: unknown = await fetchMasterControlState(accessToken, controller.signal);
         if (!isRecord(responseData)) {
           throw new Error('Master Control returned an invalid HUD state response.');
         }
@@ -226,7 +235,17 @@ export default function App() {
 
     void loadClients();
     return () => controller.abort();
-  }, [fetchAttempt]);
+  }, [accessToken, fetchAttempt]);
+
+  useEffect(() => {
+    if (!tokenExpiresAt) return;
+    const timeoutId = window.setTimeout(() => {
+      setAccessToken(null);
+      setTokenExpiresAt(null);
+      setOAuthError('Your Google access token expired. Sign in again to continue.');
+    }, Math.max(0, tokenExpiresAt - Date.now()));
+    return () => window.clearTimeout(timeoutId);
+  }, [tokenExpiresAt]);
 
   const logTerminal = useCallback((text: string, type: 'normal' | 'action' | 'server' | 'alert' = 'normal') => {
     const now = new Date();
@@ -272,7 +291,8 @@ export default function App() {
       )
     );
     if (!existingUnit || existingUnit.isDraft || !previousStage || nextStage === previousStage) return;
-    void postMasterControlAction({ action: 'updateKanban', clientID: id, newStage: nextStage })
+    if (!accessToken) return;
+    void postMasterControlAction(accessToken, { action: 'updateKanban', clientID: id, newStage: nextStage })
       .then(() => logTerminal(`${existingUnit.name} moved to ${nextStage}; Master Control synchronized.`, 'server'))
       .catch((error: unknown) => {
         setUnits((previous) => previous.map((unit) => (
@@ -318,7 +338,8 @@ export default function App() {
     }
     setUnits((previous) => previous.map((unit) => unit.id === client.id ? { ...unit, pipelineStage: newStage } : unit));
     try {
-      await postMasterControlAction({ action: 'updateKanban', clientID: client.id, newStage });
+      if (!accessToken) throw new Error('Google sign-in is required to save this change.');
+      await postMasterControlAction(accessToken, { action: 'updateKanban', clientID: client.id, newStage });
       logTerminal(`${client.companyName || client.name} moved to ${newStage}; Master Control synchronized.`, 'server');
     } catch (error) {
       setUnits((previous) => previous.map((unit) => (
@@ -365,7 +386,11 @@ export default function App() {
       dismissed: false,
     };
     setAlerts((previous) => [alert, ...previous]);
-    void postMasterControlAction({
+    if (!accessToken) {
+      logTerminal('Google sign-in is required to save the blocker alert.', 'alert');
+      return;
+    }
+    void postMasterControlAction(accessToken, {
       action: 'logAlert',
       alert: {
         alert_id: alert.id,
@@ -447,6 +472,31 @@ export default function App() {
     logTerminal(`${cmd.label} started${targetText ? ` for ${targetText}` : ''}.`, 'action');
   };
 
+  const handleGoogleToken = (tokenResponse: TokenResponse) => {
+    setOAuthError(null);
+    setLoadError(null);
+    setAccessToken(tokenResponse.access_token);
+    setTokenExpiresAt(tokenResponse.expires_in
+      ? Date.now() + tokenResponse.expires_in * 1000
+      : null);
+  };
+
+  const handleSignOut = () => {
+    setAccessToken(null);
+    setTokenExpiresAt(null);
+    setOAuthError(null);
+    setActiveModal(null);
+    setIsComplianceModalOpen(false);
+    setIsDepartmentConsoleOpen(false);
+    setContextMenu(null);
+    setUnits([]);
+    setAlerts([]);
+    setTelemetry(null);
+    setActiveUnitId(null);
+    setSelectedUnitIds([]);
+    setTerminalLogs([]);
+  };
+
   // Global Keyboard Shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -509,6 +559,26 @@ export default function App() {
     logTerminal(message, 'alert');
   };
 
+  if (!accessToken) {
+    return (
+      <main className="flex h-screen w-screen flex-col items-center justify-center gap-6 bg-bg-obsidian px-6 text-text-mana">
+        <div className="flex h-16 w-16 items-center justify-center rounded-xl border border-alert-orange bg-primary-plum/50 font-serif-display text-xl font-bold text-alert-orange shadow-[0_0_24px_rgba(254,95,0,0.2)]">
+          SZS
+        </div>
+        <div className="text-center">
+          <h1 className="font-display text-xl font-bold tracking-wide">Session Zero Solutions</h1>
+          <p className="mt-2 font-mono text-xs text-text-mana/70">Sign in to securely connect to Master Control.</p>
+        </div>
+        <GoogleSignIn
+          deploymentConfigured={Boolean(import.meta.env.VITE_APPS_SCRIPT_DEPLOYMENT_ID?.trim())}
+          error={oauthError}
+          onError={setOAuthError}
+          onToken={handleGoogleToken}
+        />
+      </main>
+    );
+  }
+
   if (isLoading) {
     return (
       <main className="flex h-screen w-screen flex-col items-center justify-center gap-5 bg-bg-obsidian text-text-mana" aria-live="polite">
@@ -522,6 +592,9 @@ export default function App() {
         <div className="h-1 w-48 overflow-hidden rounded-full bg-accent-teal/30">
           <div className="h-full w-1/2 animate-pulse bg-alert-orange" />
         </div>
+        <button type="button" onClick={handleSignOut} className="font-mono text-xs text-text-mana/60 underline hover:text-alert-orange">
+          Sign out
+        </button>
       </main>
     );
   }
@@ -540,6 +613,9 @@ export default function App() {
           className="rounded-lg bg-alert-orange px-4 py-2 font-accent text-bg-obsidian"
         >
           Retry connection
+        </button>
+        <button type="button" onClick={handleSignOut} className="font-mono text-xs text-text-mana/60 underline hover:text-alert-orange">
+          Sign out
         </button>
       </main>
     );
@@ -563,6 +639,7 @@ export default function App() {
           setIsDepartmentConsoleOpen(shouldOpen);
         }}
         isDepartmentConsoleOpen={isDepartmentConsoleOpen}
+        onSignOut={handleSignOut}
       />
 
       {/* Screen Views */}
@@ -675,6 +752,7 @@ export default function App() {
       {isComplianceModalOpen && (
         <ComplianceModal
           activeUnit={activeUnit}
+          accessToken={accessToken}
           onClose={() => setIsComplianceModalOpen(false)}
         />
       )}

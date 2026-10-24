@@ -31,7 +31,8 @@ executable.
 5. Deploy the authorized Apps Script project as an **API executable**. The
    Apps Script API calling application and script must share the standard
    Cloud project, and the user access token must include the script's required
-   OAuth scopes.
+   OAuth scopes. The `scripts.run` URL takes the API executable's **deployment
+   ID**, not the script project ID.
 6. Review `appsscript.json` and the full source to determine the actual
    required scopes. Use the narrowest scope set that supports the approved
    workflows; Apps Script API execution may require the union of scopes used
@@ -60,7 +61,9 @@ Server authorization uses `AUTHORIZED_USER_EMAILS`; exceptions and the police
 audit use separate allowlists. Internal helper functions use the Apps Script
 private-function suffix. Lead graduation is disabled pending idempotency and
 side-effect review, and payment recording is explicitly unimplemented. The
-HUD transport remains disabled until OAuth is configured.
+HUD OAuth is implemented locally, but live requests remain unverified until
+the OAuth client, API executable deployment, and scopes are configured and
+approved.
 
 The local gate and handler integration tests pass with mocked Apps Script
 services. They do not validate the live sheet schema, deployed version,
@@ -70,8 +73,15 @@ Workspace authorization, or Apps Script API execution.
 
 - Keep only the public OAuth client ID and non-sensitive API configuration in
   browser variables.
-- Request only the reviewed OAuth scopes and only when the user starts an
-  authenticated action.
+- The HUD login screen requests the scopes declared in
+  `engines/master-control/appsscript.json`, including `script.scriptapp`, which
+  is required by `scripts.run`. Keep the two lists aligned when changing
+  scopes.
+- Configure `VITE_OAUTH_CLIENT_ID` and
+  `VITE_APPS_SCRIPT_DEPLOYMENT_ID` locally. The Apps Script deployment ID is
+  distinct from the script project ID and Web App URL.
+- Access tokens are kept in React state only, expire out of state, and are
+  cleared with HUD data on sign-out.
 - Keep access tokens in memory; do not put them in URLs, logs, local storage,
   analytics, or crash reports.
 - Handle token expiration, denied consent, and authorization errors
@@ -107,6 +117,9 @@ Workspace authorization, or Apps Script API execution.
 - [x] Local server-side actor authorization is tested for allowed and denied
   users.
 - [x] Phase-gate tests and handler integration tests pass locally.
-- [ ] Browser bundle contains no API secret or access token.
+- [x] Browser adapter uses an in-memory OAuth token and does not persist or log it.
+- [x] HUD login screen starts Google OAuth and requests the manifest scopes.
+- [x] HUD uses the Apps Script API `scripts.run` request shape with `devMode: false`.
+- [ ] OAuth client and API executable deployment ID are configured and verified.
 - [ ] Production mutations remain disabled until the owner authorizes the
   verified deployment.

@@ -4,6 +4,7 @@ import { ClientUnit } from '../types';
 
 interface ComplianceModalProps {
   activeUnit: ClientUnit | null;
+  accessToken: string;
   onClose: () => void;
 }
 
@@ -15,7 +16,7 @@ const REQUIRED_ITEMS = [
   { label: 'Meeting Notes', key: 'MeetingNotes_DriveFolderID' },
 ] as const;
 
-export const ComplianceModal: React.FC<ComplianceModalProps> = ({ activeUnit, onClose }) => {
+export const ComplianceModal: React.FC<ComplianceModalProps> = ({ activeUnit, accessToken, onClose }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
@@ -28,7 +29,7 @@ export const ComplianceModal: React.FC<ComplianceModalProps> = ({ activeUnit, on
     setSuccess(false);
 
     try {
-      await postMasterControlAction({
+      await postMasterControlAction(accessToken, {
         action: 'RUN_PROVISIONING',
         clientData: activeUnit,
         projectData: { ProjectName: 'Session_Zero_Audit' },

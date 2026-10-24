@@ -8,6 +8,7 @@ interface SkyHeaderProps {
   onSelectScreen: (screen: ScreenView) => void;
   onOpenDepartments: () => void;
   isDepartmentConsoleOpen: boolean;
+  onSignOut: () => void;
 }
 
 const routeButtonClass = (isActive: boolean): string => `flex items-center gap-1 rounded px-2 py-1 font-display text-[0.62rem] font-bold transition-all ${
@@ -23,6 +24,7 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
   onSelectScreen,
   onOpenDepartments,
   isDepartmentConsoleOpen,
+  onSignOut,
 }) => {
   return (
     <header className="relative z-20 flex flex-wrap items-center justify-between gap-3 border-b border-accent-teal/60 bg-bg-obsidian/95 px-4 py-2 shadow-md">
@@ -111,6 +113,14 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
         >
           <i className="fa-solid fa-layer-group" />
           <span>DEPARTMENTS</span>
+        </button>
+        <button
+          type="button"
+          onClick={onSignOut}
+          className="rounded border border-accent-teal/60 px-2 py-1 font-mono text-[0.61rem] text-text-mana/70 hover:border-alert-orange hover:text-alert-orange"
+          title="Clear the in-memory Google token and HUD data"
+        >
+          SIGN OUT
         </button>
       </div>
 
