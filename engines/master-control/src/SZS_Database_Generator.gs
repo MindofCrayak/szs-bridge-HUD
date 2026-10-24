@@ -1,4 +1,4 @@
-function setupSZSDatabase() {
+function setupSZSDatabase_() {
   var lock = LockService.getScriptLock();
   lock.waitLock(30000);
 
@@ -33,8 +33,6 @@ function setupSZSDatabase() {
       'DriveFolderUrl',
       'ChatSpaceUrl',
       'NotesDocUrl',
-      'CaseFileJsonUrl',
-      'OSINT_Generated',
     ];
 
     clientsSheet.getRange(1, 1, 1, headers.length).setValues([headers]);
@@ -51,7 +49,7 @@ function setupSZSDatabase() {
   }
 }
 
-function getTodayCalendarEvents() {
+function getTodayCalendarEvents_() {
   const timeZone = Session.getScriptTimeZone();
   const events = CalendarApp.getEventsForDay(new Date());
 

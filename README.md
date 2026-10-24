@@ -39,10 +39,16 @@ from `apps/command-hud/`; see [release boundaries](./docs/RELEASE_BOUNDARIES.md)
 
 ## Integration status
 
-The Apps Script database generator is at
-`engines/master-control/src/SZS_Database_Generator.gs`; it creates a blank
-schema and does not seed example clients. The deployed Master Control router
-is still not present. The Oracle and Mail Command Center source repositories
-have been copied into their designated quarantine and engine folders; local
-`.env` and `.clasp.json` files were intentionally excluded. Verify the
-authorized Apps Script project ID and source configuration before pushing.
+The tagged Master Control router is now present under
+`engines/master-control/src/`; its stage gate and Workspace allowlist are
+locally wired and tested. Duplicate legacy handlers and the schema migration
+are retained outside the deployable source and excluded by `.claspignore`.
+The existing deployment has not been updated or verified, and OAuth client/API
+setup is incomplete. The HUD's old `VITE_*` shared-secret transport has been
+removed, so live Master Control reads and writes remain disabled until OAuth
+is configured. See [Master Control OAuth setup](./docs/Master_Control_OAuth_Setup.md)
+and [governance](./docs/Master_Control_Governance.md). The Oracle and Mail
+Command Center source repositories remain isolated in their designated
+quarantine and engine folders; local `.env` and `.clasp.json` files were
+intentionally excluded. Do not push or deploy before verifying the authorized
+Apps Script project, scopes, Script Properties, and deployment settings.

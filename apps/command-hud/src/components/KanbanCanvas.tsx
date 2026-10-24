@@ -151,7 +151,7 @@ export const KanbanCanvas: React.FC<KanbanCanvasProps> = ({
       onPointerMove={handlePointerMove}
       onPointerUp={handlePointerUp}
       onPointerLeave={handlePointerUp}
-      className="relative flex-1 w-full h-full overflow-hidden cursor-default select-none border-t-2 border-t-[#E0CA3C] bg-bg-obsidian"
+      className="relative min-w-[1680px] max-w-[1680px] h-[1050px] flex-shrink-0 overflow-x-hidden cursor-default select-none border-t-2 border-t-[#E0CA3C] bg-bg-obsidian"
       style={{
         background: 'linear-gradient(135deg, #0d1f18, #05130e 55%, #020500)'
       }}
@@ -161,12 +161,12 @@ export const KanbanCanvas: React.FC<KanbanCanvasProps> = ({
 
       {/* Client pipeline stages */}
       <div
-        className="pointer-events-none absolute inset-3 z-5 grid grid-cols-4 gap-3"
+        className="pointer-events-none absolute inset-3 z-5 flex gap-3"
       >
         {/* Intake */}
         <div
           id="zone-intake"
-          className={`relative overflow-hidden border-1.5 border-t-2 border-dashed border-t-[#E0CA3C] rounded-lg p-2.5 flex flex-col bg-gradient-to-b from-[#0d1f18]/75 via-[#05130e]/80 to-[#020500]/75 shadow-[0_0_15px_rgba(224,202,60,0.15)] before:pointer-events-none before:absolute before:left-3 before:right-3 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-[#E0CA3C] before:to-transparent transition-all ${
+          className={`relative w-[400px] flex-shrink-0 overflow-hidden border-1.5 border-t-2 border-dashed border-t-[#E0CA3C] rounded-lg p-2.5 flex flex-col bg-gradient-to-b from-[#0d1f18]/75 via-[#05130e]/80 to-[#020500]/75 shadow-[0_0_15px_rgba(224,202,60,0.15)] before:pointer-events-none before:absolute before:left-3 before:right-3 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-[#E0CA3C] before:to-transparent transition-all ${
             hoveredZoneId === 'zone-intake'
               ? 'border-[#E0CA3C] shadow-[0_0_15px_rgba(224,202,60,0.25)]'
               : 'border-accent-teal/45'
@@ -187,7 +187,7 @@ export const KanbanCanvas: React.FC<KanbanCanvasProps> = ({
         {/* Session Zero */}
         <div
           id="zone-session-zero"
-          className={`relative overflow-hidden border-1.5 border-t-2 border-dashed border-t-[#E0CA3C] rounded-lg p-2.5 flex flex-col bg-gradient-to-b from-[#0d1f18]/75 via-[#05130e]/80 to-[#020500]/75 shadow-[0_0_15px_rgba(224,202,60,0.15)] before:pointer-events-none before:absolute before:left-3 before:right-3 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-[#E0CA3C] before:to-transparent transition-all ${
+          className={`relative w-[400px] flex-shrink-0 overflow-hidden border-1.5 border-t-2 border-dashed border-t-[#E0CA3C] rounded-lg p-2.5 flex flex-col bg-gradient-to-b from-[#0d1f18]/75 via-[#05130e]/80 to-[#020500]/75 shadow-[0_0_15px_rgba(224,202,60,0.15)] before:pointer-events-none before:absolute before:left-3 before:right-3 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-[#E0CA3C] before:to-transparent transition-all ${
             hoveredZoneId === 'zone-session-zero'
               ? 'border-[#E0CA3C] shadow-[0_0_15px_rgba(224,202,60,0.25)]'
               : 'border-accent-teal/45'
@@ -208,7 +208,7 @@ export const KanbanCanvas: React.FC<KanbanCanvasProps> = ({
         {/* Active Sprints */}
         <div
           id="zone-active-sprints"
-          className={`relative overflow-hidden border-1.5 border-t-2 border-dashed border-t-[#E0CA3C] rounded-lg p-2.5 flex flex-col bg-gradient-to-b from-[#0d1f18]/75 via-[#05130e]/80 to-[#020500]/75 shadow-[0_0_15px_rgba(224,202,60,0.15)] before:pointer-events-none before:absolute before:left-3 before:right-3 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-[#E0CA3C] before:to-transparent transition-all ${
+          className={`relative w-[400px] flex-shrink-0 overflow-hidden border-1.5 border-t-2 border-dashed border-t-[#E0CA3C] rounded-lg p-2.5 flex flex-col bg-gradient-to-b from-[#0d1f18]/75 via-[#05130e]/80 to-[#020500]/75 shadow-[0_0_15px_rgba(224,202,60,0.15)] before:pointer-events-none before:absolute before:left-3 before:right-3 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-[#E0CA3C] before:to-transparent transition-all ${
             hoveredZoneId === 'zone-active-sprints'
               ? 'border-[#E0CA3C] shadow-[0_0_15px_rgba(224,202,60,0.25)]'
               : 'border-accent-teal/45'
@@ -229,7 +229,7 @@ export const KanbanCanvas: React.FC<KanbanCanvasProps> = ({
         {/* Liftoff */}
         <div
           id="zone-liftoff"
-          className={`relative overflow-hidden border-1.5 border-t-2 border-dashed border-t-[#E0CA3C] rounded-lg p-2.5 flex flex-col bg-gradient-to-b from-[#0d1f18]/75 via-[#05130e]/80 to-[#020500]/75 shadow-[0_0_15px_rgba(224,202,60,0.15)] before:pointer-events-none before:absolute before:left-3 before:right-3 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-[#E0CA3C] before:to-transparent transition-all ${
+          className={`relative w-[400px] flex-shrink-0 overflow-hidden border-1.5 border-t-2 border-dashed border-t-[#E0CA3C] rounded-lg p-2.5 flex flex-col bg-gradient-to-b from-[#0d1f18]/75 via-[#05130e]/80 to-[#020500]/75 shadow-[0_0_15px_rgba(224,202,60,0.15)] before:pointer-events-none before:absolute before:left-3 before:right-3 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-[#E0CA3C] before:to-transparent transition-all ${
             hoveredZoneId === 'zone-liftoff'
               ? 'border-[#E0CA3C] shadow-[0_0_15px_rgba(224,202,60,0.25)]'
               : 'border-accent-teal/45'

@@ -6,6 +6,8 @@ interface SkyHeaderProps {
   telemetry: HudTelemetry | null;
   isBackendConnected: boolean;
   onSelectScreen: (screen: ScreenView) => void;
+  onOpenDepartments: () => void;
+  isDepartmentConsoleOpen: boolean;
 }
 
 const routeButtonClass = (isActive: boolean): string => `flex items-center gap-1 rounded px-2 py-1 font-display text-[0.62rem] font-bold transition-all ${
@@ -19,6 +21,8 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
   telemetry,
   isBackendConnected,
   onSelectScreen,
+  onOpenDepartments,
+  isDepartmentConsoleOpen,
 }) => {
   return (
     <header className="relative z-20 flex flex-wrap items-center justify-between gap-3 border-b border-accent-teal/60 bg-bg-obsidian/95 px-4 py-2 shadow-md">
@@ -97,6 +101,17 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
             ACTIONS
           </button>
         </nav>
+        <button
+          type="button"
+          onClick={onOpenDepartments}
+          aria-expanded={isDepartmentConsoleOpen}
+          aria-controls="department-console"
+          className={`${routeButtonClass(isDepartmentConsoleOpen)} border border-accent-teal/60 px-3`}
+          title="Open department consoles over the tactical canvas"
+        >
+          <i className="fa-solid fa-layer-group" />
+          <span>DEPARTMENTS</span>
+        </button>
       </div>
 
       <div className="flex flex-wrap items-center justify-end gap-1.5 font-mono text-[0.61rem]">

@@ -28,12 +28,28 @@ Stage identifiers are canonical strings `00`–`09` as defined in
 requested change, but only a successful Master Control response confirms
 persistence.
 
+### Stage 04+ authorization gate
+
+The local `updateKanban` handler blocks transitions to stage `04` or later
+unless a matching row in `Finances` has `DepositPaid` true, the `Clients` row
+has a non-empty `MSA_DocID`, and a matching `Projects` row has a non-empty
+`SOW_DocID`. An exception requires explicit
+`overrideAuth: true`, a non-empty reason, server-side authorization, and a
+successfully persisted audit record before the mutation. A request field
+supplied by the browser is not itself authorization. The helper currently in
+`engines/master-control/src/Pipeline_Phase_Gate.gs` is wired into the local
+router and covered by handler tests. The deployed endpoint remains unverified;
+OAuth/API setup is incomplete, so the HUD does not currently send the request.
+See `docs/Master_Control_Governance.md`.
+
 ## Workspace and compliance
 
-`DriveFolderUrl`, `NotesDocUrl`, `ChatSpaceUrl`, `RootFolderID`, `MSA_DocID`,
-`ProjectFolderID`, `SOW_DocID`, and `MeetingNotes_DriveFolderID` map to their
-same-named camel-cased or ID fields in the HUD client model. Missing values
-must remain visibly missing; they must not be synthesized.
+`DriveFolderUrl`, `NotesDocUrl`, and `ChatSpaceUrl` are client fields.
+`MSA_DocID` is stored on the client; `SOW_DocID` and
+`MeetingNotes_DriveFolderID` are project fields. Do not infer `RootFolderID`
+or `ProjectFolderID` from a URL unless an explicit mapping is approved.
+Oracle case files and raw findings are quarantined and must not be copied into
+client Drive folders or HUD payloads.
 
 ## Alerts and telemetry
 

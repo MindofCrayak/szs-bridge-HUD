@@ -16,7 +16,8 @@ import { PipelineOverview } from './components/PipelineOverview';
 import { ClientDirectoryView } from './components/ClientDirectoryView';
 import { MacroMatrixView } from './components/MacroMatrixView';
 import { ComplianceModal } from './components/ComplianceModal';
-import { API_SECRET_KEY, API_URL } from './data/api';
+import { DepartmentConsole, DepartmentId } from './components/DepartmentConsole';
+import { fetchMasterControlState, postMasterControlAction } from './data/api';
 import { getNextPipelineStage, normalizePipelineStage, PIPELINE_STAGE_SEQUENCE } from './data/pipeline';
 
 const toText = (value: unknown): string => value == null ? '' : String(value);
@@ -75,27 +76,6 @@ const normalizeTelemetry = (value: unknown, alerts: AlfredAlert[]): HudTelemetry
   };
 };
 
-const postMasterControlAction = async (payload: Record<string, unknown>): Promise<void> => {
-  if (!API_SECRET_KEY) {
-    throw new Error('Set VITE_API_SECRET_KEY in the root .env file before saving Master Control changes.');
-  }
-  const requestUrl = new URL(API_URL);
-  requestUrl.searchParams.set('secret', API_SECRET_KEY);
-  const response = await fetch(requestUrl, {
-    method: 'POST',
-    redirect: 'follow',
-    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
-    body: JSON.stringify(payload),
-  });
-  if (!response.ok) {
-    throw new Error(`Master Control update failed with status ${response.status}.`);
-  }
-  const result: unknown = await response.json();
-  if (!isRecord(result) || (result.status !== 'success' && result.status !== 200)) {
-    throw new Error(isRecord(result) ? toText(result.message ?? result.error) || 'Master Control rejected the update.' : 'Master Control returned an invalid update response.');
-  }
-};
-
 const getInitials = (name: string): string => {
   const initials = name
     .trim()
@@ -138,6 +118,7 @@ export default function App() {
   const gridSnapEnabled = true;
   const [activeModal, setActiveModal] = useState<ActiveModal>(null);
   const [isComplianceModalOpen, setIsComplianceModalOpen] = useState(false);
+  const [isDepartmentConsoleOpen, setIsDepartmentConsoleOpen] = useState(false);
   const [complianceRequestId, setComplianceRequestId] = useState(0);
   const [terminalLogs, setTerminalLogs] = useState<TerminalLog[]>([
     { id: '1', time: '00:01', text: 'Dashboard Online. Client pipeline is ready.', type: 'server' },
@@ -153,24 +134,7 @@ export default function App() {
       setLoadError(null);
 
       try {
-        if (!API_SECRET_KEY) {
-          throw new Error('Set VITE_API_SECRET_KEY in the root .env file and restart the development server.');
-        }
-
-        const requestUrl = new URL(API_URL);
-        requestUrl.searchParams.set('action', 'getHudState');
-        requestUrl.searchParams.set('secret', API_SECRET_KEY);
-
-        const response = await fetch(requestUrl, {
-          method: 'GET',
-          redirect: 'follow',
-          signal: controller.signal,
-        });
-        if (!response.ok) {
-          throw new Error(`Master Control request failed with status ${response.status}.`);
-        }
-
-        const responseData: unknown = await response.json();
+        const responseData: unknown = await fetchMasterControlState();
         if (!isRecord(responseData)) {
           throw new Error('Master Control returned an invalid HUD state response.');
         }
@@ -540,6 +504,10 @@ export default function App() {
     setIntercomStatus(message);
     logTerminal(message, 'action');
   };
+  const handleDepartmentCommandDraft = (department: DepartmentId, command: string) => {
+    const message = `${department} command draft received locally: "${command}". No connector is configured; nothing was sent or persisted.`;
+    logTerminal(message, 'alert');
+  };
 
   if (isLoading) {
     return (
@@ -585,7 +553,16 @@ export default function App() {
         currentScreen={currentScreen}
         telemetry={headerTelemetry}
         isBackendConnected={!isLoading && !loadError}
-        onSelectScreen={setCurrentScreen}
+        onSelectScreen={(screen) => {
+          setCurrentScreen(screen);
+          if (screen !== 'dashboard') setIsDepartmentConsoleOpen(false);
+        }}
+        onOpenDepartments={() => {
+          const shouldOpen = currentScreen !== 'dashboard' || !isDepartmentConsoleOpen;
+          setCurrentScreen('dashboard');
+          setIsDepartmentConsoleOpen(shouldOpen);
+        }}
+        isDepartmentConsoleOpen={isDepartmentConsoleOpen}
       />
 
       {/* Screen Views */}
@@ -624,6 +601,18 @@ export default function App() {
             onTriggerCommand={handleTriggerCommand}
             complianceRequestId={complianceRequestId}
           />
+          {isDepartmentConsoleOpen && (
+            <DepartmentConsole
+              units={units}
+              activeUnit={activeUnit}
+              alerts={alerts}
+              isBackendConnected={!isLoading && !loadError}
+              onClose={() => setIsDepartmentConsoleOpen(false)}
+              onSelectUnit={(id) => handleSelectUnit(id, false)}
+              onTriggerCommand={handleTriggerCommand}
+              onCommandDraft={handleDepartmentCommandDraft}
+            />
+          )}
         </main>
       )}
 
