@@ -104,15 +104,17 @@ export const CardContextMenu: React.FC<CardContextMenuProps> = ({
           <i className="fa-solid fa-triangle-exclamation w-4 text-center" /> Flag Blocker
         </button>
         <div className="my-1 border-t border-accent-teal/40" />
-        {client.isDraft ? (
-          <button type="button" role="menuitem" className={`${itemClass} text-red-400`} onClick={() => { onDeleteDraftCard(client); onClose(); }}>
-            <i className="fa-solid fa-trash w-4 text-center" /> Delete Draft Card
-          </button>
-        ) : (
-          <button type="button" role="menuitem" className={`${itemClass} text-alert-orange`} onClick={() => { onSunsetClient(client); onClose(); }}>
-            <i className="fa-solid fa-sun w-4 text-center" /> Sunset / Archive (09)
-          </button>
-        )}
+        <button
+          type="button"
+          role="menuitem"
+          className={`${itemClass} text-alert-orange hover:bg-alert-orange/20`}
+          onClick={() => {
+            onSunsetClient(client);
+            onClose();
+          }}
+        >
+          <i className="fa-solid fa-box-archive w-4 text-center" /> Soft-Archive to 09: Sunset
+        </button>
       </div>
     </div>
   );

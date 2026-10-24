@@ -258,13 +258,17 @@ function compileEmailContent(rawHtml, recipient, campaign, newsletter, variant) 
     '&s_id=' + encodeURIComponent(subscriberId);
 
   // 2. Perform merge tag replacements
+  var resolvedNewsletterName = (newsletter && newsletter.name) || (campaign && campaign.newsletter_name) || (campaign && campaign.name) || 'Session Zero Solutions';
   var compiled = rawHtml
     .replace(/\{\{first_name\}\}/gi, recipient.first_name || 'Subscriber')
     .replace(/\{\{last_name\}\}/gi, recipient.last_name || '')
     .replace(/\{\{email\}\}/gi, cleanEmail)
-    .replace(/\{\{newsletter_name\}\}/gi, newsletter.name || 'Session Zero Shoutout')
+    .replace(/\{\{newsletter_name\}\}/gi, resolvedNewsletterName)
     .replace(/\{\{unsubscribe_url\}\}/gi, unsubUrl)
     .replace(/\{\{view_in_browser\}\}/gi, viewBrowserUrl);
+
+  // Guarantee no lingering {{newsletter_name}} variants remain
+  compiled = compiled.replace(/\{\{\s*newsletter_name\s*\}\}/gi, resolvedNewsletterName);
 
   // 3. Rewrite anchor tags for click tracking: <a href="...">
   // Matches href attributes that are HTTP/HTTPS links (ignores mailto:, tel:, #)
@@ -580,6 +584,17 @@ function processCampaignBatchLoop(campaign, startIndex) {
 
       if (newsletter.sender_alias && newsletter.sender_alias.indexOf('@') !== -1) {
         mailOptions.from = newsletter.sender_alias;
+      }
+
+      // Ensure PDF deliverables attach cleanly rather than leaking raw byte streams into the body
+      if (campaign.pdf_deliverable_id || (campaign.source_id && String(campaign.content_type).toUpperCase() === 'PDF')) {
+        try {
+          var targetPdfId = campaign.pdf_deliverable_id || campaign.source_id;
+          var pdfFile = DriveApp.getFileById(targetPdfId);
+          mailOptions.attachments = [pdfFile.getAs(MimeType.PDF)];
+        } catch (pdfErr) {
+          Logger.log('[SendingEngine] Clean PDF attachment notice: ' + pdfErr.message);
+        }
       }
 
       GmailApp.sendEmail(

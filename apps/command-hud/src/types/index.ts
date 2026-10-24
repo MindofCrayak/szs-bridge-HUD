@@ -34,7 +34,7 @@ export interface ClientUnit {
   MeetingNotes_DriveFolderID?: string | null;
 }
 
-export type ScreenView = 'dashboard' | 'pipeline' | 'clients' | 'actions';
+export type ScreenView = 'dashboard' | 'pipeline' | 'osint' | 'symphony' | 'treasure' | 'archive' | 'clients' | 'actions';
 
 export type CommandKey = 'Q' | 'W' | 'E' | 'A' | 'S' | 'D' | 'Z' | 'X' | 'C';
 

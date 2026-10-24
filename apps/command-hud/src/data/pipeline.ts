@@ -18,14 +18,14 @@ export const PIPELINE_COLUMNS: PipelineColumn[] = [
     id: 'session-zero',
     title: 'SESSION ZERO',
     badge: 'DISCOVERY',
-    stages: ['02: Contract & Inception', '03: Deep Intelligence', '04: Session Zero Kickoff'],
-    defaultStage: '04: Session Zero Kickoff',
+    stages: ['02: Contract & Inception', '03: Deep Intelligence'],
+    defaultStage: '02: Contract & Inception',
   },
   {
     id: 'active-sprints',
     title: 'ACTIVE SPRINTS',
     badge: 'DELIVERY',
-    stages: ['05: Builds', '06: Mid-Flight Review', '07: Final Staging'],
+    stages: ['04: Session Zero Kickoff', '05: Builds', '06: Mid-Flight Review', '07: Final Staging'],
     defaultStage: '05: Builds',
   },
   {
@@ -40,23 +40,32 @@ export const PIPELINE_COLUMNS: PipelineColumn[] = [
 export const PIPELINE_STAGE_SEQUENCE = PIPELINE_COLUMNS.flatMap((column) => column.stages);
 
 const LEGACY_STAGE_MAP: Record<string, string> = {
+  '00: discovery': '00: Discovery',
   '01: intake': '00: Discovery',
   '01: vibecheck': '01: Pitch Staged',
+  '01: pitch staged': '01: Pitch Staged',
   '01: pitch staged / vibecheck': '01: Pitch Staged',
-  '02: session zero': '04: Session Zero Kickoff',
+  '02: session zero': '02: Contract & Inception',
   '02: contract & inception': '02: Contract & Inception',
   '03: strategy & blueprint': '03: Deep Intelligence',
   '03: deep intelligence': '03: Deep Intelligence',
+  '04: kickoff': '04: Session Zero Kickoff',
+  '04: session zero kickoff': '04: Session Zero Kickoff',
   '03: active sprints': '05: Builds',
+  '05: builds': '05: Builds',
   '05: architecture & builds': '05: Builds',
   '04: build sprint 1': '05: Builds',
   '05: build sprint 2': '05: Builds',
   '06: mid-flight review': '06: Mid-Flight Review',
+  '06: mid-flight': '06: Mid-Flight Review',
   '07: final staging & qa': '07: Final Staging',
   '07: final staging': '07: Final Staging',
+  '07: final qa': '07: Final Staging',
   '08: liftoff & handover': '08: Liftoff',
+  '08: handover': '08: Liftoff',
   '04: liftoff': '08: Liftoff',
   '08: liftoff': '08: Liftoff',
+  '09: sunset': '09: Sunset / Retainer',
   '09: sunset / retainer': '09: Sunset / Retainer',
 };
 
@@ -70,7 +79,7 @@ export const getPipelineColumnIndex = (stage: string): number => {
   const stageNumber = Number.parseInt(canonicalStage.split(':', 1)[0], 10);
   if (!Number.isFinite(stageNumber)) return 0;
   if (stageNumber <= 1) return 0;
-  if (stageNumber <= 4) return 1;
+  if (stageNumber <= 3) return 1;
   if (stageNumber <= 7) return 2;
   return 3;
 };

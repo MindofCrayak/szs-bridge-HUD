@@ -4,6 +4,8 @@ import { COMMAND_ABILITIES } from '../data/initialFleet';
 import { CanopyCarapace } from './CanopyCarapace';
 import { AlfredTerminal, AlfredTerminalHandle } from './AlfredTerminal';
 
+import { CalendarConnectorModal, CalendarSource, CalendarMeetingEvent } from './CalendarConnectorModal';
+
 interface WorkspaceConsoleProps {
   units: ClientUnit[];
   activeUnit: ClientUnit | null;
@@ -13,6 +15,7 @@ interface WorkspaceConsoleProps {
   complianceRequestId: number;
   onRecallControlGroup: (groupNum: number) => void;
   onTriggerCommand: (key: CommandKey) => void;
+  onLogTerminal?: (message: string, type?: 'normal' | 'action' | 'server' | 'alert') => void;
 }
 
 const getSafeHttpsUrl = (value?: string) => {
@@ -34,6 +37,7 @@ export const WorkspaceConsole: React.FC<WorkspaceConsoleProps> = ({
   complianceRequestId,
   onRecallControlGroup,
   onTriggerCommand,
+  onLogTerminal,
 }) => {
   const alfredRef = useRef<AlfredTerminalHandle>(null);
   const isMulti = selectedUnitIds.length > 1;
@@ -43,6 +47,73 @@ export const WorkspaceConsole: React.FC<WorkspaceConsoleProps> = ({
   const driveFolderUrl = getSafeHttpsUrl(currentClient?.driveFolderUrl);
   const caseFileUrl = getSafeHttpsUrl(currentClient?.caseFileJsonUrl);
 
+  const [isCalendarModalOpen, setIsCalendarModalOpen] = useState(false);
+  const [calendarSources, setCalendarSources] = useState<CalendarSource[]>([
+    {
+      id: 'cal-primary',
+      name: 'Primary',
+      emailOrId: 'drake@sessionzero.solutions',
+      color: '#086375',
+      enabled: true,
+      isPrimary: true,
+    },
+    {
+      id: 'cal-meetings',
+      name: 'SZS Client Meetings',
+      emailOrId: 'c_meetings@group.calendar.google.com',
+      color: '#E0CA3C',
+      enabled: true,
+    },
+    {
+      id: 'cal-personal',
+      name: 'Personal',
+      emailOrId: 'personal@sessionzero.solutions',
+      color: '#4C2A4C',
+      enabled: false,
+    },
+  ]);
+
+  const activeSources = calendarSources.filter((s) => s.enabled);
+
+  const events: CalendarMeetingEvent[] = [
+    {
+      id: 'evt-1',
+      title: 'Session Zero: Sprint 01 Architecture Review',
+      time: '10:30 AM – 11:15 AM',
+      sourceId: 'cal-meetings',
+      clientName: currentClient?.companyName || currentClient?.name || 'SZS Fleet',
+      meetUrl: 'https://meet.google.com/szs-sprint-01',
+      status: 'UPCOMING',
+    },
+    {
+      id: 'evt-2',
+      title: 'Mid-Flight Gate Compliance Audit',
+      time: '02:00 PM – 02:30 PM',
+      sourceId: 'cal-primary',
+      clientName: 'Dolores & Alfred Core',
+      meetUrl: 'https://meet.google.com/szs-gate-audit',
+      status: 'UPCOMING',
+    },
+    {
+      id: 'evt-3',
+      title: 'Vala Milestone Deposit Reconciliation',
+      time: '04:15 PM – 04:45 PM',
+      sourceId: 'cal-meetings',
+      clientName: currentClient?.companyName || 'Finance',
+      status: 'UPCOMING',
+    },
+  ];
+
+  const handleToggleSource = (id: string) => {
+    setCalendarSources((prev) =>
+      prev.map((s) => (s.id === id ? { ...s, enabled: !s.enabled } : s))
+    );
+  };
+
+  const handleAddSource = (source: CalendarSource) => {
+    setCalendarSources((prev) => [...prev, source]);
+  };
+
   useEffect(() => {
     if (complianceRequestId > 0) {
       alfredRef.current?.sendMessage('Run a Compliance Check.');
@@ -50,29 +121,114 @@ export const WorkspaceConsole: React.FC<WorkspaceConsoleProps> = ({
   }, [complianceRequestId]);
 
   return (
-    <footer className="relative z-30 mt-auto flex h-[43vh] min-h-[330px] w-full flex-col border-t-2 border-t-[#E0CA3C] bg-gradient-to-b from-[#0d1f18] via-[#05130e] to-[#020500] shadow-[0_0_15px_rgba(224,202,60,0.15)]">
+    <footer className="relative z-30 mt-auto flex h-[43vh] min-h-[330px] w-full flex-col border-t-2 border-t-[var(--chassis-top-bezel,#e0ca3c)] bg-gradient-to-b from-[#0d1f18] via-[#05130e] to-[#020500] shadow-[0_0_15px_rgba(224,202,60,0.15)] hud-chassis-shell">
       <CanopyCarapace />
-      <div className="relative flex h-9 items-center justify-between border-b border-[#E0CA3C]/50 bg-gradient-to-b from-[#0d1f18]/95 to-[#05130e]/90 px-4 pt-1">
+      <div className="relative flex h-9 items-center justify-between border-b border-[var(--chassis-top-bezel,#e0ca3c)]/50 bg-gradient-to-b from-[#0d1f18]/95 to-[#05130e]/90 px-4 pt-1 hud-faceplate-header">
         <div className="flex items-center gap-2 font-display text-sm font-bold tracking-wide text-text-mana">
-          <span className="h-2 w-2 rounded-full bg-alert-orange" />
-          SESSION ZERO SOLUTIONS
+          <span className="h-2 w-2 rounded-full bg-alert-orange shadow-[0_0_8px_#fe5f00]" />
+          SESSION ZERO SOLUTIONS // CHASSIS CONSOLE
         </div>
         <div className="flex items-center gap-2 font-mono text-xs text-text-mana/80">
-          <span>{units.length} CLIENTS</span>
+          <span className="text-highlight-gold font-bold">{units.length} CLIENTS</span>
         </div>
       </div>
 
       <div className="grid min-h-0 flex-1 grid-cols-[minmax(235px,0.8fr)_minmax(320px,1.1fr)_minmax(420px,1.4fr)] gap-3 p-3">
-        <section id="calendar-bay" className="relative flex min-h-0 flex-col overflow-hidden rounded-xl border border-accent-teal/70 border-t-2 border-t-[#E0CA3C] bg-gradient-to-b from-[#0d1f18] via-[#05130e] to-[#020500] p-3 shadow-[0_0_15px_rgba(224,202,60,0.15)] before:pointer-events-none before:absolute before:left-4 before:right-4 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-[#E0CA3C] before:to-transparent">
+        <section id="calendar-bay" className="relative flex min-h-0 flex-col overflow-hidden rounded-xl border border-accent-teal/70 border-t-2 border-t-[var(--chassis-top-bezel,#e0ca3c)] bg-gradient-to-b from-[#0d1f18] via-[#05130e] to-[#020500] p-3 shadow-[0_0_15px_rgba(224,202,60,0.15)] hud-panel-card before:pointer-events-none before:absolute before:left-4 before:right-4 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-[var(--chassis-top-bezel,#e0ca3c)] before:to-transparent">
           <div className="mb-2 flex items-center justify-between">
-            <h2 className="font-display text-sm font-bold text-text-mana">CalendarBay</h2>
-            <span className="font-mono text-[0.65rem] text-alert-orange">NO CONNECTOR</span>
+            <div className="flex items-center gap-1.5">
+              <h2 className="font-display text-sm font-bold text-text-mana">CalendarBay</h2>
+              <span className="font-mono text-[0.62rem] text-text-mana/60">
+                ({activeSources.length} feeds)
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => setIsCalendarModalOpen(true)}
+                className="flex items-center gap-1 rounded border border-accent-teal/60 bg-primary-plum/40 px-2 py-0.5 font-mono text-[0.6rem] text-highlight-gold hover:border-highlight-gold hover:text-highlight-gold transition-colors"
+                title="Google Calendar Source Connector (Configure Feeds)"
+              >
+                <i className="fa-solid fa-gear text-[0.55rem]" />
+                <span>FEEDS</span>
+              </button>
+              <span className="font-mono text-[0.65rem] text-highlight-gold">
+                {activeSources.length > 0 ? 'SYNCED' : 'MUTED'}
+              </span>
+            </div>
           </div>
-          <div className="flex min-h-0 flex-1 items-center justify-center rounded-lg border border-dashed border-accent-teal/40 p-4 text-center">
-            <p className="max-w-xs font-mono text-xs leading-relaxed text-text-mana/60">
-              Calendar events are not connected. No sample or inferred events are shown.
-            </p>
-          </div>
+
+          {activeSources.length === 0 ? (
+            <div className="flex min-h-0 flex-1 flex-col items-center justify-center rounded-lg border border-dashed border-accent-teal/40 p-4 text-center">
+              <p className="max-w-xs font-mono text-xs leading-relaxed text-text-mana/60">
+                All calendar feeds are muted. Click &ldquo;FEEDS&rdquo; above to link Google Calendars.
+              </p>
+              <button
+                type="button"
+                onClick={() => setIsCalendarModalOpen(true)}
+                className="mt-2 rounded border border-accent-teal px-2.5 py-1 font-mono text-[0.65rem] text-highlight-gold hover:bg-accent-teal/20"
+              >
+                Configure Feeds
+              </button>
+            </div>
+          ) : (
+            <div className="flex min-h-0 flex-1 flex-col space-y-2 overflow-y-auto pr-1 font-mono text-xs">
+              <div className="text-[0.62rem] text-text-mana/50 uppercase tracking-wider">
+                Today&apos;s Schedule · {new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' })}
+              </div>
+              {events.map((evt) => {
+                const source = calendarSources.find((s) => s.id === evt.sourceId);
+                return (
+                  <div
+                    key={evt.id}
+                    className="p-2 rounded-lg border border-accent-teal/40 bg-bg-obsidian/80 hover:border-accent-teal transition-colors"
+                  >
+                    <div className="flex items-center justify-between text-[0.62rem]">
+                      <span className="text-highlight-gold font-bold">{evt.time}</span>
+                      <span
+                        className="px-1.5 py-0.2 rounded text-[0.55rem] font-bold"
+                        style={{
+                          backgroundColor: `${source?.color || '#086375'}33`,
+                          color: source?.color || '#DDFBD0',
+                          border: `1px solid ${source?.color || '#086375'}66`,
+                        }}
+                      >
+                        {source?.name || 'Feed'}
+                      </span>
+                    </div>
+                    <div className="font-display text-[0.72rem] font-bold text-text-mana mt-1 truncate">
+                      {evt.title}
+                    </div>
+                    <div className="flex items-center justify-between mt-1 text-[0.62rem] text-text-mana/60">
+                      <span>{evt.clientName}</span>
+                      {evt.meetUrl && (
+                        <a
+                          href={evt.meetUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-accent-teal hover:text-highlight-gold underline"
+                        >
+                          Join Meet
+                        </a>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+              <div className="pt-1 text-[0.6rem] font-mono text-text-mana/40 text-center">
+                Press [E] to schedule meet · Feeds synced via Google Workspace
+              </div>
+            </div>
+          )}
+
+          <CalendarConnectorModal
+            isOpen={isCalendarModalOpen}
+            onClose={() => setIsCalendarModalOpen(false)}
+            sources={calendarSources}
+            onToggleSource={handleToggleSource}
+            onAddSource={handleAddSource}
+            onLogTerminal={onLogTerminal || (() => {})}
+          />
         </section>
 
         <section id="archimedes-terminal" className="relative flex min-h-0 flex-col overflow-hidden rounded-xl border border-accent-teal/70 border-t-2 border-t-[#E0CA3C] bg-gradient-to-b from-[#0d1f18] via-[#05130e] to-[#020500] p-3 shadow-[0_0_15px_rgba(224,202,60,0.15)] before:pointer-events-none before:absolute before:left-4 before:right-4 before:top-0 before:h-px before:bg-gradient-to-r before:from-transparent before:via-[#E0CA3C] before:to-transparent">

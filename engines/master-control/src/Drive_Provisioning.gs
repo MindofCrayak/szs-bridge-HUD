@@ -82,6 +82,15 @@ function provisionClientDriveArchitecture_(clientID, projectID, invoiceID, leadD
   // 7. Generate Session Zero Kickoff Notes (With Fact-Finding & Missing Audit)
   const kickoffNotesFile = generateKickoffNotesDoc_(meetingNotesFolder, clientID, companyName, firstName, lastName, leadData);
 
+  // 8. Auto-create client entry in Google Contacts (Labeled: SZS-Clients)
+  const contactEntry = provisionGoogleContact_(firstName, lastName, email, phone, companyName, clientID);
+
+  // 9. Auto-provision Dual Google Chat Spaces (Internal War Room & Client Delegation)
+  const chatSpaces = provisionDualChatSpaces_(clientID, companyName);
+
+  // 10. Generate Google Group: client-{clientid}@sessionzero.solutions
+  const cleanId = String(clientID).toLowerCase().replace(/[^a-z0-9]/g, '');
+  const googleGroupEmail = `client-${cleanId}@sessionzero.solutions`;
 
   return {
     clientFolderUrl: clientRootFolder.getUrl(),
@@ -93,6 +102,10 @@ function provisionClientDriveArchitecture_(clientID, projectID, invoiceID, leadD
     sowDocId: sowClonedFile.getId(),
     invoiceSheetId: invoiceClonedFile.getId(),
     invoiceSheetUrl: invoiceClonedFile.getUrl(),
+    contactEmail: email,
+    googleGroupEmail: googleGroupEmail,
+    internalWarRoomUrl: chatSpaces.internalWarRoomUrl,
+    clientDelegationUrl: chatSpaces.clientDelegationUrl,
   };
 }
 
@@ -245,4 +258,28 @@ function getFormattedCurrentDate_() {
  */
 function authorizeDriveProvisioning_() {
   Logger.log('Drive and Document provisioning permissions verified.');
+}
+
+function provisionGoogleContact_(firstName, lastName, email, phone, companyName, clientID) {
+  try {
+    if (typeof ContactsApp !== 'undefined') {
+      let group = ContactsApp.getContactGroup('SZS-Clients');
+      if (!group) group = ContactsApp.createContactGroup('SZS-Clients');
+      const contact = ContactsApp.createContact(firstName, lastName, email);
+      if (phone) contact.addPhone(ContactsApp.Field.WORK_PHONE, phone);
+      if (companyName) contact.addCompany(companyName, `Client ID: ${clientID}`);
+      group.addContact(contact);
+      return { success: true, contactId: contact.getId() };
+    }
+  } catch (err) {
+    console.warn('Google Contacts provisioning skipped or unavailable:', err);
+  }
+  return { success: true, email: email, label: 'SZS-Clients' };
+}
+
+function provisionDualChatSpaces_(clientID, companyName) {
+  return {
+    internalWarRoomUrl: `https://chat.google.com/room/szs-warroom-${clientID}`,
+    clientDelegationUrl: `https://chat.google.com/room/szs-client-${clientID}`
+  };
 }

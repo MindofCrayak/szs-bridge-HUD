@@ -4,7 +4,7 @@ import { ClientUnit } from '../types';
 
 interface ComplianceModalProps {
   activeUnit: ClientUnit | null;
-  accessToken: string;
+  accessToken: string | null;
   onClose: () => void;
 }
 
@@ -24,6 +24,10 @@ export const ComplianceModal: React.FC<ComplianceModalProps> = ({ activeUnit, ac
 
   const handleProvisioning = async () => {
     if (!activeUnit || isLoading) return;
+    if (!accessToken) {
+      setError('Google sign-in is required to run live provisioning on Master Control.');
+      return;
+    }
     setIsLoading(true);
     setError(null);
     setSuccess(false);

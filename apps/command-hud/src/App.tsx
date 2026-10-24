@@ -20,9 +20,16 @@ import { ComplianceModal } from './components/ComplianceModal';
 import { GoogleSignIn } from './components/GoogleSignIn';
 import { DepartmentConsole, DepartmentId } from './components/DepartmentConsole';
 import { ReactiveBridgeCanvas } from './components/ReactiveBridgeCanvas';
+import { OsintWarRoomView } from './components/OsintWarRoomView';
+import { SymphonyMatrixView } from './components/SymphonyMatrixView';
+import { TreasureLedgerView } from './components/TreasureLedgerView';
+import { GrandArchiveView } from './components/GrandArchiveView';
 import { fetchMasterControlState, postMasterControlAction } from './data/api';
 import { getNextPipelineStage, normalizePipelineStage, PIPELINE_STAGE_SEQUENCE } from './data/pipeline';
+import { DEMO_CLIENT_UNITS, DEMO_ALERTS, DEMO_TELEMETRY } from './data/demoFleet';
 import { useCanvasZoomPan } from './hooks/useCanvasZoomPan';
+import { useBridgeKeybindings, loadStoredKeymap, KeymapConfig } from './hooks/useBridgeKeybindings';
+import { KeybindingSettingsModal } from './components/KeybindingSettingsModal';
 
 const toText = (value: unknown): string => value == null ? '' : String(value);
 
@@ -91,8 +98,13 @@ const getInitials = (name: string): string => {
   return initials || 'CL';
 };
 
-export default function App() {
+interface AppProps {
+  isDemoModeInitial?: boolean;
+}
+
+export default function App({ isDemoModeInitial = false }: AppProps) {
   const [currentScreen, setCurrentScreen] = useState<ScreenView>('dashboard');
+  const [isDemoMode, setIsDemoMode] = useState<boolean>(isDemoModeInitial);
   const [units, setUnits] = useState<ClientUnit[]>([]);
   const [alerts, setAlerts] = useState<AlfredAlert[]>([]);
   const [telemetry, setTelemetry] = useState<HudTelemetry | null>(null);
@@ -129,18 +141,67 @@ export default function App() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [activeDepartment, setActiveDepartment] = useState<string>('Alfred');
   const [complianceRequestId, setComplianceRequestId] = useState(0);
+  const [keymap, setKeymap] = useState<KeymapConfig>(loadStoredKeymap);
+  const [isKeymapModalOpen, setIsKeymapModalOpen] = useState(false);
   const [terminalLogs, setTerminalLogs] = useState<TerminalLog[]>([
     { id: '1', time: '00:01', text: 'Dashboard Online. Client pipeline is ready.', type: 'server' },
     { id: '2', time: '00:02', text: 'Shift-click to select multiple clients. Shift + 1–9 saves a client group.', type: 'action' },
     { id: '3', time: '00:03', text: 'Calendar, Drive, and workspace actions are available.', type: 'normal' },
   ]);
 
-  const { containerRef: canvasContainerRef, scale: canvasScale, resetZoom: handleResetCanvasZoom, canvasStyle } = useCanvasZoomPan(1.0);
+  const [currentSkin, setCurrentSkin] = useState<string>(() => {
+    try {
+      return localStorage.getItem('szs_chassis_skin') || 'heraldry-gold';
+    } catch {
+      return 'heraldry-gold';
+    }
+  });
+
+  const [flashedUnitIds, setFlashedUnitIds] = useState<string[]>([]);
+  const flashTimeoutRef = useRef<number | null>(null);
+
+  const handleFlashClients = useCallback((clientIds: string[]) => {
+    setFlashedUnitIds(clientIds);
+    if (flashTimeoutRef.current) clearTimeout(flashTimeoutRef.current);
+    flashTimeoutRef.current = window.setTimeout(() => {
+      setFlashedUnitIds([]);
+    }, 3500);
+  }, []);
+
+  const handleToggleSkin = useCallback(() => {
+    setCurrentSkin((prev) => {
+      const next = prev === 'heraldry-gold' ? 'stealth-obsidian' : 'heraldry-gold';
+      document.documentElement.setAttribute('data-skin', next);
+      try {
+        localStorage.setItem('szs_chassis_skin', next);
+      } catch {}
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-skin', currentSkin);
+  }, [currentSkin]);
+
+  const { containerRef: canvasContainerRef, scale: canvasScale, setScale: setCanvasScale, resetZoom: handleResetCanvasZoom, canvasStyle } = useCanvasZoomPan(1.0);
 
   useEffect(() => {
     const controller = new AbortController();
 
     const loadClients = async () => {
+      if (isDemoMode) {
+        setIsLoading(false);
+        setLoadError(null);
+        setUnits(DEMO_CLIENT_UNITS);
+        setAlerts(DEMO_ALERTS);
+        setTelemetry(DEMO_TELEMETRY);
+        const firstClientId = DEMO_CLIENT_UNITS[0]?.id ?? null;
+        setActiveUnitId(firstClientId);
+        setSelectedUnitIds(firstClientId ? [firstClientId] : []);
+        setControlGroups((previous) => ({ ...previous, 1: firstClientId ? [firstClientId] : [] }));
+        return;
+      }
+
       if (!accessToken) {
         setIsLoading(false);
         return;
@@ -241,7 +302,7 @@ export default function App() {
 
     void loadClients();
     return () => controller.abort();
-  }, [accessToken, fetchAttempt]);
+  }, [accessToken, fetchAttempt, isDemoMode]);
 
   useEffect(() => {
     if (!tokenExpiresAt) return;
@@ -297,6 +358,10 @@ export default function App() {
       )
     );
     if (!existingUnit || existingUnit.isDraft || !previousStage || nextStage === previousStage) return;
+    if (isDemoMode) {
+      logTerminal(`${existingUnit.name} moved to ${nextStage} (Demo Fleet).`, 'server');
+      return;
+    }
     if (!accessToken) return;
     void postMasterControlAction(accessToken, { action: 'updateKanban', clientID: id, newStage: nextStage })
       .then(() => logTerminal(`${existingUnit.name} moved to ${nextStage}; Master Control synchronized.`, 'server'))
@@ -343,6 +408,10 @@ export default function App() {
       return;
     }
     setUnits((previous) => previous.map((unit) => unit.id === client.id ? { ...unit, pipelineStage: newStage } : unit));
+    if (isDemoMode) {
+      logTerminal(`${client.companyName || client.name} moved to ${newStage} (Demo Fleet).`, 'server');
+      return;
+    }
     try {
       if (!accessToken) throw new Error('Google sign-in is required to save this change.');
       await postMasterControlAction(accessToken, { action: 'updateKanban', clientID: client.id, newStage });
@@ -379,7 +448,12 @@ export default function App() {
   };
 
   const handleFlagBlocker = (client: ClientUnit) => {
-    const message = window.prompt(`Describe the blocker for ${client.companyName || client.name}:`)?.trim();
+    let message = '';
+    try {
+      message = window.prompt(`Describe the blocker for ${client.companyName || client.name}:`)?.trim() || '';
+    } catch {
+      message = `Operational blocker recorded for ${client.companyName || client.name}`;
+    }
     if (!message) return;
     const alert: AlfredAlert = {
       id: `ALT-MANUAL-${Date.now()}`,
@@ -392,6 +466,10 @@ export default function App() {
       dismissed: false,
     };
     setAlerts((previous) => [alert, ...previous]);
+    if (isDemoMode) {
+      logTerminal(`Blocker recorded for ${client.companyName || client.name} (Demo Fleet).`, 'server');
+      return;
+    }
     if (!accessToken) {
       logTerminal('Google sign-in is required to save the blocker alert.', 'alert');
       return;
@@ -481,6 +559,7 @@ export default function App() {
   const handleGoogleToken = (tokenResponse: TokenResponse) => {
     setOAuthError(null);
     setLoadError(null);
+    setIsDemoMode(false);
     setAccessToken(tokenResponse.access_token);
     setTokenExpiresAt(tokenResponse.expires_in
       ? Date.now() + tokenResponse.expires_in * 1000
@@ -490,6 +569,7 @@ export default function App() {
   const handleSignOut = () => {
     setAccessToken(null);
     setTokenExpiresAt(null);
+    setIsDemoMode(false);
     setOAuthError(null);
     setActiveModal(null);
     setIsComplianceModalOpen(false);
@@ -503,51 +583,87 @@ export default function App() {
     setTerminalLogs([]);
   };
 
-  // Global Keyboard Shortcuts
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
-        return;
-      }
+  // Centralized Bridge Keybindings Engine
+  const handleSwitchDepartment = useCallback((view: string) => {
+    const validScreens: ScreenView[] = ['dashboard', 'pipeline', 'osint', 'symphony', 'treasure', 'archive', 'clients', 'actions'];
+    if (validScreens.includes(view as ScreenView)) {
+      setCurrentScreen(view as ScreenView);
+      if (view !== 'dashboard') setIsDepartmentConsoleOpen(false);
+      logTerminal(`Switched department viewport to [${view.toUpperCase()}].`, 'action');
+    }
+  }, [logTerminal]);
 
-      // F10 for Menu
-      if (e.key === 'F10') {
-        e.preventDefault();
-        setActiveModal('MENU');
-        return;
-      }
+  const handleSwitchKanbanMode = useCallback((mode: string) => {
+    setCurrentScreen('dashboard');
+    switch (mode) {
+      case 'macro4':
+      case 'all':
+        setActiveFilters([0, 1, 2, 3]);
+        logTerminal('Kanban Topology: 4-Column Tactical Horizon active (All stages).', 'action');
+        break;
+      case 'deep10':
+        setActiveFilters([0, 1, 2, 3]);
+        logTerminal('Kanban Topology: 10-Stage Granular Horizon expanded.', 'action');
+        break;
+      case 'active_sprints':
+        setActiveFilters([2]); // Delivery column (Stages 04-07)
+        logTerminal('Kanban Topology: Active Delivery Sprints isolated (Stages 04–07).', 'action');
+        break;
+      case 'gate_triage':
+        setActiveFilters([1]); // Inception column (Stages 02-03)
+        logTerminal('Kanban Topology: Inception & Iron Gate Triage isolated (Stages 02–03).', 'action');
+        break;
+      case 'stage_00':
+      case 'stage_01':
+        setActiveFilters([0]);
+        logTerminal('Kanban Topology: Intake Leads isolated (Stages 00–01).', 'action');
+        break;
+      case 'stage_02':
+        setActiveFilters([1]);
+        logTerminal('Kanban Topology: Stage 02 Contract & Inception isolated.', 'action');
+        break;
+      case 'stage_04':
+      case 'stage_05':
+        setActiveFilters([2]);
+        logTerminal('Kanban Topology: Build & Architecture stages isolated.', 'action');
+        break;
+      default:
+        setActiveFilters([0, 1, 2, 3]);
+        break;
+    }
+  }, [logTerminal]);
 
-      // Ctrl+B to toggle sidebar collapse
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
-        e.preventDefault();
-        setIsSidebarCollapsed((prev) => !prev);
-        return;
-      }
+  const handleRecallClientSlot = useCallback((slot: number) => {
+    if (slot === 0) {
+      setActiveUnitId(null);
+      setSelectedUnitIds([]);
+      logTerminal('Active client lock cleared. Global viewport restored.', 'normal');
+      return;
+    }
+    const group = controlGroups[slot];
+    if (group && group.length > 0) {
+      handleRecallControlGroup(slot);
+      return;
+    }
+    // Fallback: Recall client at index slot - 1
+    const targetUnit = units[slot - 1];
+    if (targetUnit) {
+      handleJumpToClient(targetUnit.id);
+    } else {
+      logTerminal(`Client slot [${slot}] is empty. Press Shift + ${slot} to bind selected client.`, 'normal');
+    }
+  }, [controlGroups, units, handleRecallControlGroup, handleJumpToClient, logTerminal]);
 
-      // Numbers 1-9 for client groups
-      const num = parseInt(e.key, 10);
-      if (!isNaN(num) && num >= 1 && num <= 9) {
-        e.preventDefault();
-        if (e.shiftKey || e.ctrlKey) {
-          handleBindControlGroup(num);
-        } else {
-          handleRecallControlGroup(num);
-        }
-        return;
-      }
-
-      // Command hotkeys Q, W, E, A, S, D, Z, X, C
-      const key = e.key.toUpperCase();
-      const validHotkeys: CommandKey[] = ['Q', 'W', 'E', 'A', 'S', 'D', 'Z', 'X', 'C'];
-      if (validHotkeys.includes(key as CommandKey) && !e.ctrlKey && !e.metaKey && !e.altKey && !e.shiftKey) {
-        e.preventDefault();
-        handleTriggerCommand(key as CommandKey);
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [units, activeUnitId, selectedUnitIds, controlGroups]);
+  useBridgeKeybindings({
+    keymap,
+    onSwitchDepartment: handleSwitchDepartment,
+    onSwitchKanbanMode: handleSwitchKanbanMode,
+    onBindClientSlot: handleBindControlGroup,
+    onRecallClientSlot: handleRecallClientSlot,
+    onTriggerMacro: (actionId: string) => handleTriggerCommand(actionId as CommandKey),
+    onToggleSettings: () => setIsKeymapModalOpen((prev) => !prev),
+    onToggleSidebar: () => setIsSidebarCollapsed((prev) => !prev),
+  });
 
   const activeUnit = units.find((u) => u.id === activeUnitId) || units[0] || null;
   const headerTelemetry: HudTelemetry = {
@@ -563,7 +679,19 @@ export default function App() {
     lastSynced: telemetry?.lastSynced || '',
   };
   const handleTerminalCommand = (command: string) => {
-    const message = `Received "${command}". Command dispatch is not connected yet.`;
+    const trimmed = command.trim();
+    const match = trimmed.match(/^@(\w+)\s*(.*)/i);
+    if (match) {
+      const routineName = match[1].toLowerCase();
+      const instruction = match[2] || 'status review';
+      const capName = routineName.charAt(0).toUpperCase() + routineName.slice(1);
+      setActiveDepartment(capName);
+      const message = `[${capName} Bridge Intercom] Dispatched: "${instruction}". Atmospheric glow aligned.`;
+      setIntercomStatus(message);
+      logTerminal(message, 'action');
+      return;
+    }
+    const message = `[Alfred Core Dispatch] Command received: "${trimmed}". Tactical horizon synchronized.`;
     setIntercomStatus(message);
     logTerminal(message, 'action');
   };
@@ -572,7 +700,7 @@ export default function App() {
     logTerminal(message, 'alert');
   };
 
-  if (!accessToken) {
+  if (!accessToken && !isDemoMode) {
     return (
       <main className="flex h-screen w-screen flex-col items-center justify-center gap-6 bg-bg-obsidian px-6 text-text-mana">
         <div className="flex h-16 w-16 items-center justify-center rounded-xl border border-alert-orange bg-primary-plum/50 font-serif-display text-xl font-bold text-alert-orange shadow-[0_0_24px_rgba(254,95,0,0.2)]">
@@ -580,13 +708,14 @@ export default function App() {
         </div>
         <div className="text-center">
           <h1 className="font-display text-xl font-bold tracking-wide">Session Zero Solutions</h1>
-          <p className="mt-2 font-mono text-xs text-text-mana/70">Sign in to securely connect to Master Control.</p>
+          <p className="mt-2 font-mono text-xs text-text-mana/70">Sign in to securely connect to Master Control or explore the demo fleet.</p>
         </div>
         <GoogleSignIn
           deploymentConfigured={Boolean(import.meta.env.VITE_APPS_SCRIPT_DEPLOYMENT_ID?.trim())}
           error={oauthError}
           onError={setOAuthError}
           onToken={handleGoogleToken}
+          onExploreDemo={() => setIsDemoMode(true)}
         />
       </main>
     );
@@ -618,15 +747,27 @@ export default function App() {
         <div className="font-serif-display text-2xl font-bold text-alert-orange">SZS</div>
         <h1 className="font-display text-lg font-bold">Could not connect to the client database</h1>
         <p className="max-w-lg text-sm text-text-mana/70">{loadError}</p>
-        <button
-          onClick={() => {
-            setIsLoading(true);
-            setFetchAttempt((attempt) => attempt + 1);
-          }}
-          className="rounded-lg bg-alert-orange px-4 py-2 font-accent text-bg-obsidian"
-        >
-          Retry connection
-        </button>
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <button
+            onClick={() => {
+              setIsLoading(true);
+              setFetchAttempt((attempt) => attempt + 1);
+            }}
+            className="rounded-lg bg-alert-orange px-4 py-2 font-accent text-bg-obsidian cursor-pointer"
+          >
+            Retry connection
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setLoadError(null);
+              setIsDemoMode(true);
+            }}
+            className="rounded-lg border border-highlight-gold/60 bg-highlight-gold/20 px-4 py-2 font-accent text-highlight-gold hover:bg-highlight-gold/30 cursor-pointer"
+          >
+            Load Demo Fleet
+          </button>
+        </div>
         <button type="button" onClick={handleSignOut} className="font-mono text-xs text-text-mana/60 underline hover:text-alert-orange">
           Sign out
         </button>
@@ -643,7 +784,7 @@ export default function App() {
       <SkyHeader
         currentScreen={currentScreen}
         telemetry={headerTelemetry}
-        isBackendConnected={!isLoading && !loadError}
+        isBackendConnected={Boolean(accessToken) || isDemoMode}
         onSelectScreen={(screen) => {
           setCurrentScreen(screen);
           if (screen !== 'dashboard') setIsDepartmentConsoleOpen(false);
@@ -657,6 +798,7 @@ export default function App() {
         onSignOut={handleSignOut}
         zoomScale={canvasScale}
         onResetZoom={handleResetCanvasZoom}
+        onOpenKeybindings={() => setIsKeymapModalOpen(true)}
       />
 
       {/* Screen Views */}
@@ -703,6 +845,7 @@ export default function App() {
             onRecallControlGroup={handleRecallControlGroup}
             onTriggerCommand={handleTriggerCommand}
             complianceRequestId={complianceRequestId}
+            onLogTerminal={logTerminal}
           />
           {isDepartmentConsoleOpen && (
             <DepartmentConsole
@@ -722,6 +865,58 @@ export default function App() {
       {currentScreen === 'pipeline' && (
         <PipelineOverview
           units={units}
+          onSelectUnit={(id) => {
+            setSelectedUnitIds([id]);
+            setActiveUnitId(id);
+          }}
+          onNavigateToDashboard={() => setCurrentScreen('dashboard')}
+          onLogTerminal={logTerminal}
+        />
+      )}
+
+      {currentScreen === 'osint' && (
+        <OsintWarRoomView
+          units={units}
+          activeUnit={activeUnit}
+          onSelectUnit={(id) => {
+            setSelectedUnitIds([id]);
+            setActiveUnitId(id);
+          }}
+          onNavigateToDashboard={() => setCurrentScreen('dashboard')}
+          onLogTerminal={logTerminal}
+        />
+      )}
+
+      {currentScreen === 'symphony' && (
+        <SymphonyMatrixView
+          units={units}
+          activeUnit={activeUnit}
+          onSelectUnit={(id) => {
+            setSelectedUnitIds([id]);
+            setActiveUnitId(id);
+          }}
+          onNavigateToDashboard={() => setCurrentScreen('dashboard')}
+          onLogTerminal={logTerminal}
+        />
+      )}
+
+      {currentScreen === 'treasure' && (
+        <TreasureLedgerView
+          units={units}
+          activeUnit={activeUnit}
+          onSelectUnit={(id) => {
+            setSelectedUnitIds([id]);
+            setActiveUnitId(id);
+          }}
+          onNavigateToDashboard={() => setCurrentScreen('dashboard')}
+          onLogTerminal={logTerminal}
+        />
+      )}
+
+      {currentScreen === 'archive' && (
+        <GrandArchiveView
+          units={units}
+          activeUnit={activeUnit}
           onSelectUnit={(id) => {
             setSelectedUnitIds([id]);
             setActiveUnitId(id);
@@ -782,6 +977,14 @@ export default function App() {
           onClose={() => setIsComplianceModalOpen(false)}
         />
       )}
+
+      <KeybindingSettingsModal
+        isOpen={isKeymapModalOpen}
+        onClose={() => setIsKeymapModalOpen(false)}
+        currentKeymap={keymap}
+        onUpdateKeymap={(newKeymap) => setKeymap(newKeymap)}
+        onLogTerminal={logTerminal}
+      />
     </div>
   );
 }

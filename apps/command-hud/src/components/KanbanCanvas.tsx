@@ -5,6 +5,7 @@ import { getPipelineColumnIndex, getPipelineStageForColumn, normalizePipelineSta
 const currencyFormatter = new Intl.NumberFormat('en-US', {
   style: 'currency',
   currency: 'USD',
+  maximumFractionDigits: 0,
 });
 
 interface KanbanCanvasProps {
@@ -12,6 +13,7 @@ interface KanbanCanvasProps {
   activeFilters: number[];
   activeUnitId: string | null;
   selectedUnitIds: string[];
+  flashedUnitIds?: string[];
   onSelectUnit: (id: string, isShift: boolean) => void;
   onUpdateUnitPosition: (id: string, x: number, y: number, pipelineStage?: string) => void;
   gridSnapEnabled: boolean;
@@ -24,6 +26,7 @@ export const KanbanCanvas: React.FC<KanbanCanvasProps> = ({
   activeFilters,
   activeUnitId,
   selectedUnitIds,
+  flashedUnitIds = [],
   onSelectUnit,
   onUpdateUnitPosition,
   gridSnapEnabled,
@@ -253,6 +256,7 @@ export const KanbanCanvas: React.FC<KanbanCanvasProps> = ({
         const isPrimary = unit.id === activeUnitId;
         const isMulti = selectedUnitIds.includes(unit.id);
         const isDragging = dragRef.current.isDragging && dragRef.current.unitId === unit.id;
+        const isFlashed = flashedUnitIds.includes(unit.id);
 
         return (
           <div
@@ -269,9 +273,11 @@ export const KanbanCanvas: React.FC<KanbanCanvasProps> = ({
               top: `${unit.posY}px`,
               touchAction: 'none',
             }}
-            className={`draggable-unit-node absolute w-[205px] rounded-md p-1.5 cursor-grab select-none transition-shadow duration-150 backdrop-blur-md z-15 ${
+            className={`draggable-unit-node absolute w-[205px] rounded-md p-1.5 cursor-grab select-none transition-all duration-200 backdrop-blur-md z-15 ${
               isDragging
                 ? 'cursor-grabbing scale-105 z-40 border-alert-orange shadow-[0_0_16px_rgba(254,95,0,0.4)]'
+                : isFlashed
+                ? 'scale-[1.03] z-30 border-2 border-highlight-gold border-l-4 border-l-highlight-gold bg-gradient-to-br from-[#1a2d22] via-[#0d1f18] to-[#020500] shadow-[0_0_24px_rgba(224,202,60,0.85)] ring-2 ring-highlight-gold animate-pulse'
                 : isPrimary
                 ? 'border-[1.5px] border-[#E0CA3C] border-l-4 border-l-[#E0CA3C] bg-gradient-to-br from-[#0d1f18] via-[#05130e] to-[#020500] shadow-[0_0_16px_rgba(224,202,60,0.4)]'
                 : isMulti
@@ -305,10 +311,10 @@ export const KanbanCanvas: React.FC<KanbanCanvasProps> = ({
 
               <div className="flex-1 overflow-hidden">
                 <div className="truncate font-display text-[0.74rem] font-bold text-text-mana" title={unit.companyName || unit.name}>
-                  {unit.companyName || unit.id}
+                  {unit.companyName || (unit as unknown as { Company_Name?: string }).Company_Name || unit.id}
                 </div>
                 <div className="truncate text-[0.62rem] text-text-mana/65">
-                  {unit.primaryContact || unit.leadSource || 'No Contact'}
+                  {(unit as unknown as { PrimaryContact?: string }).PrimaryContact || unit.primaryContact || unit.leadSource || 'No Contact'}
                 </div>
               </div>
 
@@ -340,22 +346,26 @@ export const KanbanCanvas: React.FC<KanbanCanvasProps> = ({
             </div>
 
             <div className="mt-2 flex flex-wrap items-center gap-1 font-mono text-[0.53rem]">
-              <span className={`rounded px-1.5 py-0.5 ${unit.MSA_DocID ? 'bg-text-mana/20 text-text-mana' : 'bg-plasma text-bg-obsidian'}`}>
-                {unit.MSA_DocID ? 'MSA READY' : 'MSA MISSING'}
+              <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 ${unit.driveFolderUrl || unit.RootFolderID || unit.ProjectFolderID ? 'bg-accent-teal/30 text-text-mana border border-accent-teal/50' : 'bg-primary-plum/30 text-text-mana/40 border border-accent-teal/20'}`} title={unit.driveFolderUrl || 'Drive folder'}>
+                <i className="fa-solid fa-folder text-[0.5rem] text-highlight-gold" />
+                <span>DRIVE</span>
               </span>
-              <span className={`rounded px-1.5 py-0.5 ${unit.depositPaid ? 'text-gold' : 'bg-plasma text-bg-obsidian'}`}>
-                {unit.depositPaid ? 'DEPOSIT PAID' : 'DEPOSIT DUE'}
+              <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 ${unit.notesDocUrl || unit.MeetingNotes_DriveFolderID ? 'bg-accent-teal/30 text-text-mana border border-accent-teal/50' : 'bg-primary-plum/30 text-text-mana/40 border border-accent-teal/20'}`} title={unit.notesDocUrl || 'Meeting notes'}>
+                <i className="fa-solid fa-file-lines text-[0.5rem] text-text-mana" />
+                <span>NOTES</span>
               </span>
-              {unit.osintGenerated || unit.caseFileJsonUrl ? (
-                <span className="rounded px-1.5 py-0.5 text-radar">OSINT READY</span>
-              ) : (
-                <span className="rounded px-1.5 py-0.5 text-text-mana/40">OSINT PENDING</span>
-              )}
-              {unit.driveFolderUrl || unit.RootFolderID ? (
-                <span className="rounded bg-radar/40 px-1.5 py-0.5 text-text-mana">DRIVE</span>
-              ) : (
-                <span className="rounded px-1.5 py-0.5 text-text-mana/40">NO DRIVE</span>
-              )}
+              <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 ${unit.MSA_DocID ? 'bg-text-mana/20 text-text-mana border border-text-mana/30' : 'bg-primary-plum/30 text-text-mana/40 border border-accent-teal/20'}`} title={unit.MSA_DocID ? `MSA: ${unit.MSA_DocID}` : 'Master Services Agreement'}>
+                <i className="fa-solid fa-file-signature text-[0.5rem] text-highlight-gold" />
+                <span>MSA</span>
+              </span>
+              <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 ${unit.SOW_DocID ? 'bg-text-mana/20 text-text-mana border border-text-mana/30' : 'bg-primary-plum/30 text-text-mana/40 border border-accent-teal/20'}`} title={unit.SOW_DocID ? `SOW: ${unit.SOW_DocID}` : 'Statement of Work'}>
+                <i className="fa-solid fa-file-contract text-[0.5rem] text-text-mana" />
+                <span>SOW</span>
+              </span>
+              <span className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 ${unit.depositPaid ? 'bg-highlight-gold/20 text-highlight-gold border border-highlight-gold/40' : 'bg-alert-orange/20 text-alert-orange border border-alert-orange/40'}`}>
+                <i className={`fa-solid ${unit.depositPaid ? 'fa-circle-check text-highlight-gold' : 'fa-hourglass-half text-alert-orange'} text-[0.5rem]`} />
+                <span>{unit.depositPaid ? 'DEPOSIT' : 'DEP DUE'}</span>
+              </span>
             </div>
 
             {/* Footer with pipeline stage and contract value */}

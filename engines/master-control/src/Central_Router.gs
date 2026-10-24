@@ -537,6 +537,51 @@ function updateKanbanWithActor_(clientID, newStage, request, actor) {
   }
 
   sheet.getRange(sheetRow, columns.PipelineStage + 1).setValue(targetStage);
+
+  // Synchronize Projects.KanbanStage simultaneously
+  try {
+    const ss = getMasterControlSpreadsheet_();
+    const projectsSheet = ss.getSheetByName('Projects');
+    if (projectsSheet) {
+      const pVals = projectsSheet.getDataRange().getValues();
+      if (pVals.length > 1) {
+        const pHeaders = pVals[0].map(h => String(h).trim());
+        const pClientCol = pHeaders.indexOf('ClientID');
+        const pKanbanCol = pHeaders.indexOf('KanbanStage');
+        if (pClientCol !== -1 && pKanbanCol !== -1) {
+          for (let p = 1; p < pVals.length; p++) {
+            if (String(pVals[p][pClientCol]).trim() === targetClientID) {
+              projectsSheet.getRange(p + 1, pKanbanCol + 1).setValue(targetStage);
+              break;
+            }
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('Could not synchronize Projects.KanbanStage:', err);
+  }
+
+  // Append transition to immutable Stage_History audit ledger
+  try {
+    const ss = getMasterControlSpreadsheet_();
+    let historySheet = ss.getSheetByName('Stage_History');
+    if (!historySheet) {
+      historySheet = ss.insertSheet('Stage_History');
+      historySheet.appendRow(['Timestamp', 'ClientID', 'OldStage', 'NewStage', 'Actor', 'GateDecision']);
+    }
+    historySheet.appendRow([
+      new Date().toISOString(),
+      targetClientID,
+      String(client.PipelineStage || 'UNKNOWN'),
+      targetStage,
+      String(actor || 'System'),
+      String(decision.code || 'PREREQUISITES_MET')
+    ]);
+  } catch (err) {
+    console.warn('Could not record to Stage_History:', err);
+  }
+
   return {
     clientID: targetClientID,
     pipelineStage: targetStage,
