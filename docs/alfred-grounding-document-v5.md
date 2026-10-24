@@ -59,7 +59,8 @@ The codebase follows a unified monorepo architecture (`szs-bridge-HUD`):
 ## 5. Security & Authentication Model (OAuth 2.0 API Executable)
 * **Zero Browser Secrets**: No privileged API secret keys or `VITE_API_SECRET_KEY` tokens are permitted in client-side environment files.
 * **OAuth 2.0 API Executable**: The React HUD authenticates via Google Identity Services using public `VITE_OAUTH_CLIENT_ID`. Requests route through the Google Apps Script API using in-memory Bearer access tokens.
-* **Server-Side Authorization**: `Central_Router.gs` validates active user emails against `AUTHORIZED_USER_EMAILS` allowlists via `Session.getActiveUser().getEmail()`.
+* **Root Domain & Master Admin Authority**: While Session Zero Solutions serves as the commercial DBA banner, the root Google Workspace tenant, GCP Project `103602622890`, cloud billing, Master Control spreadsheets, and master admin credentials reside under `drake@drakeaustinconsulting.com` (DrakeCo LLC / Drake Austin Consulting).
+* **Server-Side Authorization**: `Central_Router.gs` and `Master_Control_Auth.gs` validate active and effective user identities against `AUTHORIZED_USER_EMAILS` allowlists. `drake@drakeaustinconsulting.com` and `drake@sessionzero.solutions` are recognized as root administrative sovereigns.
 * **Standard GCP Link**: Apps Script is tethered to standard Google Cloud Project `103602622890` with the Apps Script API explicitly enabled.
 
 ---
