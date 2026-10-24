@@ -13,8 +13,17 @@ const SYSTEM_CONFIG = {
   },
   get MCC_DB_ID() {
     return PropertiesService.getScriptProperties().getProperty('MCC_DB_ID') || '';
+  },
+  get MASTER_CONTROL_SHEET_ID() {
+    return PropertiesService.getScriptProperties().getProperty('MASTER_CONTROL_SHEET_ID') || '1VLvipkP8LUOX2_F4RdIFHrq7e346XRSk1nYSClTVDy0';
   }
 };
+
+function getMasterControlSpreadsheet_() {
+  const active = SpreadsheetApp.getActiveSpreadsheet();
+  if (active) return active;
+  return SpreadsheetApp.openById(SYSTEM_CONFIG.MASTER_CONTROL_SHEET_ID);
+}
 
 // ============================================================================
 // 1. THE WEBHOOK ROUTER (doPost)
@@ -125,7 +134,7 @@ function mintClientID_(sheet, rawName) {
 // ============================================================================
 
 function executeLeadGraduation_(leadData) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getMasterControlSpreadsheet_();
   const clientsSheet = findSheetFlexible_(ss, ['Clients']);
   const projectsSheet = findSheetFlexible_(ss, ['Projects']);
   const financesSheet = findSheetFlexible_(ss, ['Finances']);
@@ -280,7 +289,7 @@ function runSystemPoliceAudit() {
 
 function runSystemPoliceAuditBody_() {
   console.log('Running Master Control Police Audit...');
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getMasterControlSpreadsheet_();
   const clientsSheet = findSheetFlexible_(ss, ['Clients']);
  
   if (!clientsSheet) {
@@ -404,7 +413,7 @@ function logAlfredAlert_(clientID, priority, category, message) {
 }
 
 function appendAlertRecord_(alert) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getMasterControlSpreadsheet_();
   const alertSheet = ss.getSheetByName('Alfred_Alerts');
   if (!alertSheet) throw new Error('The Alfred_Alerts sheet is unavailable.');
 
@@ -452,7 +461,7 @@ function updateKanbanWithActor_(clientID, newStage, request, actor) {
     throw createRouterError_('ClientID and newStage are required.', 'INVALID_REQUEST', 400);
   }
 
-  const sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Clients');
+  const sheet = getMasterControlSpreadsheet_().getSheetByName('Clients');
   if (!sheet) throw new Error('The Clients sheet is unavailable.');
 
   const values = sheet.getDataRange().getValues();
@@ -484,8 +493,8 @@ function updateKanbanWithActor_(clientID, newStage, request, actor) {
   });
 
   if (/^0[4-9](?::|$)/.test(targetStage)) {
-    const projectsSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Projects');
-    const financesSheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName('Finances');
+    const projectsSheet = getMasterControlSpreadsheet_().getSheetByName('Projects');
+    const financesSheet = getMasterControlSpreadsheet_().getSheetByName('Finances');
     if (!projectsSheet || !financesSheet) {
       throw new Error('The Projects and Finances sheets are required by the stage gate.');
     }
@@ -580,7 +589,7 @@ function doGet(e) {
 // ============================================================================
 
 function buildHudPayload_() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ss = getMasterControlSpreadsheet_();
   
   const clients = getSheetDataAsObjectsFlexible_(findSheetFlexible_(ss, ['Clients']));
   const projects = getSheetDataAsObjectsFlexible_(findSheetFlexible_(ss, ['Projects']));
