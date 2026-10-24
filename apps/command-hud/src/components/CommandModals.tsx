@@ -8,7 +8,7 @@ interface CommandModalsProps {
   activeUnit: ClientUnit | null;
   units: ClientUnit[];
   onAddUnit: (newUnit: ClientUnit) => void;
-  onLogTerminal: (message: string, type?: 'normal' | 'action' | 'server' | 'alert') => void;
+  onLogTerminal?: (message: string, type?: 'normal' | 'action' | 'server' | 'alert') => void;
 }
 
 const ACTION_DETAILS: Partial<Record<Exclude<ActiveModal, null | 'MENU'>, { title: string; description: string; href: string; action: string }>> = {
@@ -116,7 +116,7 @@ export const CommandModals: React.FC<CommandModalsProps> = ({
       isDraft: true,
     };
     onAddUnit(newClient);
-    onLogTerminal(`Client Onboarded: ${newClient.name} added to Intake.`, 'action');
+    onLogTerminal?.(`Client Onboarded: ${newClient.name} added to Intake.`, 'action');
     onClose();
   };
 
@@ -195,7 +195,7 @@ export const CommandModals: React.FC<CommandModalsProps> = ({
                 href={finalActionHref}
                 target="_blank"
                 rel="noopener noreferrer"
-                onClick={() => onLogTerminal(`${actionDetails.title} opened${activeUnit ? ` for ${activeUnit.name}` : ''}.`, 'action')}
+                onClick={() => onLogTerminal?.(`${actionDetails.title} opened${activeUnit ? ` for ${activeUnit.name}` : ''}.`, 'action')}
                 className="block rounded-lg bg-alert-orange px-4 py-3 text-center font-accent text-bg-obsidian"
               >
                 {actionDetails.action}

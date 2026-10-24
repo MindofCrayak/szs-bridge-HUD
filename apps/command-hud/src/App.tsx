@@ -323,9 +323,12 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
   }
 
   return (
-    <div className="w-screen h-screen bg-[#020500] text-[#DDFBD0] overflow-hidden grid grid-cols-[52px_1fr] relative select-none">
-      {/* Reactive Airship Bridge Canvas Ambient Glow */}
+    <div className="w-screen h-screen bg-[#020500] text-[#DDFBD0] overflow-hidden relative select-none">
+      {/* Reactive Airship Bridge Canvas Ambient Glow — fixed overlay, outside the grid */}
       <ReactiveBridgeCanvas activeDepartment={activeDepartment} alertsCount={headerTelemetry.activeAlertsCount} />
+
+      {/* Root grid: 52px permanent rail | main workspace */}
+      <div className="relative z-10 w-full h-full grid grid-cols-[52px_1fr] overflow-hidden">
 
       {/* Permanent 52px Left Rail + Floating 320px Auto-Closing Drawer */}
       <MultiAgentDispatch
@@ -509,6 +512,7 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
         units={clients as any}
         onAddUnit={() => {}}
       />
+      </div>{/* end grid wrapper */}
     </div>
   );
 }
