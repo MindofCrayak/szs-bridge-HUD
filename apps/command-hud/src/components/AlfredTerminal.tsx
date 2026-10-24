@@ -25,11 +25,16 @@ export const AlfredTerminal = forwardRef<AlfredTerminalHandle, AlfredTerminalPro
   const [error, setError] = useState<string | null>(null);
   const messagesRef = useRef<ChatMessage[]>([]);
   const pendingExternalCommandsRef = useRef<string[]>([]);
-  const activeUnitIdRef = useRef(activeUnit?.id);
+  // Use ClientID as the canonical unique identifier (dual-schema safe)
+  const u = activeUnit as any;
+  const activeUnitIdRef = useRef<string | undefined>(u?.ClientID || u?.id);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const isTypingRef = useRef(false);
-  activeUnitIdRef.current = activeUnit?.id;
-  const u = activeUnit as any;
+  activeUnitIdRef.current = u?.ClientID || u?.id;
+
+  // ── DUAL-SCHEMA RESILIENT CONTEXT BUILDERS ──────────────────────────────
+  // All field accesses use dual-schema fallbacks (ClientRecord & ClientUnit).
+  // Never access fields directly without ?? / || fallback.
   const complianceStatus = u
     ? [
         `Root Folder: ${u.RootFolderID?.trim() ? 'Found' : 'Missing'}`,
@@ -39,22 +44,23 @@ export const AlfredTerminal = forwardRef<AlfredTerminalHandle, AlfredTerminalPro
         `Meeting Notes: ${u.MeetingNotes_DriveFolderID?.trim() ? 'Found' : 'Missing'}`,
       ].join(', ')
     : 'No client selected.';
+
   const clientContext = u
     ? [
-        `Client ID: ${u.id || u.ClientID || 'N/A'}`,
-        `Name: ${u.name || u.Company_Name || 'N/A'}`,
+        `Client ID: ${u.ClientID || u.id || 'N/A'}`,
+        `Name: ${u.Company_Name || u.name || u.companyName || 'N/A'}`,
         `Archetype: ${u.archetype || 'Not recorded'}`,
-        `Pipeline stage: ${u.pipelineStage || u.AccountPhase || 'Not recorded'}`,
-        `Active roadblock: ${u.activePebble || u.roadblock || 'None recorded'}`,
-        `Contract value: $${(u.contractValue ?? u.ContractValue ?? 0).toLocaleString()}`,
-        `Deposit paid: ${(u.depositPaid ?? u.DepositPaid) ? 'Yes' : 'No'}`,
+        `Pipeline stage: ${u.AccountPhase || u.pipelineStage || 'Not recorded'}`,
+        `Active roadblock: ${u.activeRoadblock || u.roadblock || u.activePebble || 'None recorded'}`,
+        `Contract value: $${(u.ContractValue ?? u.contractValue ?? 0).toLocaleString()}`,
+        `Deposit paid: ${(u.DepositPaid ?? u.depositPaid ?? false) ? 'Yes' : 'No'}`,
         `Current milestone: ${u.currentMilestone || 'Not recorded'}`,
-        `Milestones completed: ${u.completedMilestones ?? 'N/A'}`,
-        `Milestones total: ${u.totalMilestones ?? 'N/A'}`,
+        `Milestones completed: ${u.completedMilestones ?? u.MilestonesDone ?? 'N/A'}`,
+        `Milestones total: ${u.totalMilestones ?? u.MilestonesTotal ?? 'N/A'}`,
         `Google Group Email: ${u.googleGroupEmail || 'Not recorded'}`,
         `Google Tasklist ID: ${u.taskListId || 'Not recorded'}`,
-        `Chat Space URL: ${u.chatSpaceUrl || u.ChatSpaceUrl || 'Not recorded'}`,
-        `Client notes URL: ${u.notesDocUrl || u.NotesDocUrl || 'Not recorded'}`,
+        `Chat Space URL: ${u.ChatSpaceUrl || u.chatSpaceUrl || 'Not recorded'}`,
+        `Client notes URL: ${u.NotesDocUrl || u.notesDocUrl || 'Not recorded'}`,
         `Oracle case file URL: ${u.caseFileJsonUrl || 'Not recorded'}`,
         `Root Folder ID: ${u.RootFolderID?.trim() || 'Missing'}`,
         `MSA Document ID: ${u.MSA_DocID?.trim() || 'Missing'}`,
@@ -63,6 +69,7 @@ export const AlfredTerminal = forwardRef<AlfredTerminalHandle, AlfredTerminalPro
         `Meeting Notes Folder ID: ${u.MeetingNotes_DriveFolderID?.trim() || 'Missing'}`,
       ].join('\n')
     : 'No active client is selected.';
+  // ────────────────────────────────────────────────────────────────────────
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
@@ -73,7 +80,7 @@ export const AlfredTerminal = forwardRef<AlfredTerminalHandle, AlfredTerminalPro
     pendingExternalCommandsRef.current = [];
     setMessages([]);
     setError(null);
-  }, [activeUnit?.id]);
+  }, [u?.ClientID || u?.id]);
 
   const sendMessage = useCallback(async (rawText: string) => {
     const text = rawText.trim();
@@ -83,7 +90,7 @@ export const AlfredTerminal = forwardRef<AlfredTerminalHandle, AlfredTerminalPro
       return;
     }
     const conversation = [...messagesRef.current, { role: 'user' as const, text }];
-    const requestClientId = activeUnit?.id;
+    const requestClientId = u?.ClientID || u?.id;
     messagesRef.current = conversation;
     setMessages(conversation);
     setError(null);
