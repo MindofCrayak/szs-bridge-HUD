@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { TokenResponse } from '@react-oauth/google';
 import { AlfredAlert, ClientUnit, CommandKey, ActiveModal, HudTelemetry, ScreenView, TerminalLog } from './types';
 import { COMMAND_ABILITIES } from './data/initialFleet';
