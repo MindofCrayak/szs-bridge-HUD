@@ -29,37 +29,38 @@ export const AlfredTerminal = forwardRef<AlfredTerminalHandle, AlfredTerminalPro
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const isTypingRef = useRef(false);
   activeUnitIdRef.current = activeUnit?.id;
-  const complianceStatus = activeUnit
+  const u = activeUnit as any;
+  const complianceStatus = u
     ? [
-        `Root Folder: ${activeUnit.RootFolderID?.trim() ? 'Found' : 'Missing'}`,
-        `MSA: ${activeUnit.MSA_DocID?.trim() ? 'Found' : 'Missing'}`,
-        `Project Folder: ${activeUnit.ProjectFolderID?.trim() ? 'Found' : 'Missing'}`,
-        `SOW: ${activeUnit.SOW_DocID?.trim() ? 'Found' : 'Missing'}`,
-        `Meeting Notes: ${activeUnit.MeetingNotes_DriveFolderID?.trim() ? 'Found' : 'Missing'}`,
+        `Root Folder: ${u.RootFolderID?.trim() ? 'Found' : 'Missing'}`,
+        `MSA: ${u.MSA_DocID?.trim() ? 'Found' : 'Missing'}`,
+        `Project Folder: ${u.ProjectFolderID?.trim() ? 'Found' : 'Missing'}`,
+        `SOW: ${u.SOW_DocID?.trim() ? 'Found' : 'Missing'}`,
+        `Meeting Notes: ${u.MeetingNotes_DriveFolderID?.trim() ? 'Found' : 'Missing'}`,
       ].join(', ')
     : 'No client selected.';
-  const clientContext = activeUnit
+  const clientContext = u
     ? [
-        `Client ID: ${activeUnit.id}`,
-        `Name: ${activeUnit.name}`,
-        `Archetype: ${activeUnit.archetype || 'Not recorded'}`,
-        `Pipeline stage: ${activeUnit.pipelineStage || 'Not recorded'}`,
-        `Active roadblock: ${activeUnit.activePebble || 'None recorded'}`,
-        `Contract value: $${activeUnit.contractValue.toLocaleString()}`,
-        `Deposit paid: ${activeUnit.depositPaid ? 'Yes' : 'No'}`,
-        `Current milestone: ${activeUnit.currentMilestone || 'Not recorded'}`,
-        `Milestones completed: ${activeUnit.completedMilestones}`,
-        `Milestones total: ${activeUnit.totalMilestones}`,
-        `Google Group Email: ${activeUnit.googleGroupEmail || 'Not recorded'}`,
-        `Google Tasklist ID: ${activeUnit.taskListId || 'Not recorded'}`,
-        `Chat Space URL: ${activeUnit.chatSpaceUrl || 'Not recorded'}`,
-        `Client notes URL: ${activeUnit.notesDocUrl || 'Not recorded'}`,
-        `Oracle case file URL: ${activeUnit.caseFileJsonUrl || 'Not recorded'}`,
-        `Root Folder ID: ${activeUnit.RootFolderID?.trim() || 'Missing'}`,
-        `MSA Document ID: ${activeUnit.MSA_DocID?.trim() || 'Missing'}`,
-        `Project Folder ID: ${activeUnit.ProjectFolderID?.trim() || 'Missing'}`,
-        `SOW Document ID: ${activeUnit.SOW_DocID?.trim() || 'Missing'}`,
-        `Meeting Notes Folder ID: ${activeUnit.MeetingNotes_DriveFolderID?.trim() || 'Missing'}`,
+        `Client ID: ${u.id || u.ClientID || 'N/A'}`,
+        `Name: ${u.name || u.Company_Name || 'N/A'}`,
+        `Archetype: ${u.archetype || 'Not recorded'}`,
+        `Pipeline stage: ${u.pipelineStage || u.AccountPhase || 'Not recorded'}`,
+        `Active roadblock: ${u.activePebble || u.roadblock || 'None recorded'}`,
+        `Contract value: $${(u.contractValue ?? u.ContractValue ?? 0).toLocaleString()}`,
+        `Deposit paid: ${(u.depositPaid ?? u.DepositPaid) ? 'Yes' : 'No'}`,
+        `Current milestone: ${u.currentMilestone || 'Not recorded'}`,
+        `Milestones completed: ${u.completedMilestones ?? 'N/A'}`,
+        `Milestones total: ${u.totalMilestones ?? 'N/A'}`,
+        `Google Group Email: ${u.googleGroupEmail || 'Not recorded'}`,
+        `Google Tasklist ID: ${u.taskListId || 'Not recorded'}`,
+        `Chat Space URL: ${u.chatSpaceUrl || u.ChatSpaceUrl || 'Not recorded'}`,
+        `Client notes URL: ${u.notesDocUrl || u.NotesDocUrl || 'Not recorded'}`,
+        `Oracle case file URL: ${u.caseFileJsonUrl || 'Not recorded'}`,
+        `Root Folder ID: ${u.RootFolderID?.trim() || 'Missing'}`,
+        `MSA Document ID: ${u.MSA_DocID?.trim() || 'Missing'}`,
+        `Project Folder ID: ${u.ProjectFolderID?.trim() || 'Missing'}`,
+        `SOW Document ID: ${u.SOW_DocID?.trim() || 'Missing'}`,
+        `Meeting Notes Folder ID: ${u.MeetingNotes_DriveFolderID?.trim() || 'Missing'}`,
       ].join('\n')
     : 'No active client is selected.';
 
