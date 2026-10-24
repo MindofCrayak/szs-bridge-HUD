@@ -9,6 +9,8 @@ interface SkyHeaderProps {
   onOpenDepartments: () => void;
   isDepartmentConsoleOpen: boolean;
   onSignOut: () => void;
+  zoomScale?: number;
+  onResetZoom?: () => void;
 }
 
 const routeButtonClass = (isActive: boolean): string => `flex items-center gap-1 rounded px-2 py-1 font-display text-[0.62rem] font-bold transition-all ${
@@ -25,6 +27,8 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
   onOpenDepartments,
   isDepartmentConsoleOpen,
   onSignOut,
+  zoomScale,
+  onResetZoom,
 }) => {
   return (
     <header className="relative z-20 flex flex-wrap items-center justify-between gap-3 border-b border-accent-teal/60 bg-bg-obsidian/95 px-4 py-2 shadow-md">
@@ -114,6 +118,19 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
           <i className="fa-solid fa-layer-group" />
           <span>DEPARTMENTS</span>
         </button>
+
+        {zoomScale !== undefined && (
+          <button
+            type="button"
+            onClick={onResetZoom}
+            className="flex items-center gap-1 rounded border border-accent-teal/60 bg-primary-plum/30 px-2 py-1 font-mono text-[0.61rem] text-text-mana/80 hover:border-highlight-gold hover:text-highlight-gold transition-colors"
+            title="Canvas Zoom Level - Click to reset to 100% (Ctrl+Scroll on canvas to zoom)"
+          >
+            <i className="fa-solid fa-magnifying-glass text-[0.55rem]" />
+            <span>{Math.round(zoomScale * 100)}%</span>
+          </button>
+        )}
+
         <button
           type="button"
           onClick={onSignOut}

@@ -19,8 +19,10 @@ import { MacroMatrixView } from './components/MacroMatrixView';
 import { ComplianceModal } from './components/ComplianceModal';
 import { GoogleSignIn } from './components/GoogleSignIn';
 import { DepartmentConsole, DepartmentId } from './components/DepartmentConsole';
+import { ReactiveBridgeCanvas } from './components/ReactiveBridgeCanvas';
 import { fetchMasterControlState, postMasterControlAction } from './data/api';
 import { getNextPipelineStage, normalizePipelineStage, PIPELINE_STAGE_SEQUENCE } from './data/pipeline';
+import { useCanvasZoomPan } from './hooks/useCanvasZoomPan';
 
 const toText = (value: unknown): string => value == null ? '' : String(value);
 
@@ -124,12 +126,16 @@ export default function App() {
   const [activeModal, setActiveModal] = useState<ActiveModal>(null);
   const [isComplianceModalOpen, setIsComplianceModalOpen] = useState(false);
   const [isDepartmentConsoleOpen, setIsDepartmentConsoleOpen] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [activeDepartment, setActiveDepartment] = useState<string>('Alfred');
   const [complianceRequestId, setComplianceRequestId] = useState(0);
   const [terminalLogs, setTerminalLogs] = useState<TerminalLog[]>([
     { id: '1', time: '00:01', text: 'Dashboard Online. Client pipeline is ready.', type: 'server' },
     { id: '2', time: '00:02', text: 'Shift-click to select multiple clients. Shift + 1–9 saves a client group.', type: 'action' },
     { id: '3', time: '00:03', text: 'Calendar, Drive, and workspace actions are available.', type: 'normal' },
   ]);
+
+  const { containerRef: canvasContainerRef, scale: canvasScale, resetZoom: handleResetCanvasZoom, canvasStyle } = useCanvasZoomPan(1.0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -511,6 +517,13 @@ export default function App() {
         return;
       }
 
+      // Ctrl+B to toggle sidebar collapse
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+        e.preventDefault();
+        setIsSidebarCollapsed((prev) => !prev);
+        return;
+      }
+
       // Numbers 1-9 for client groups
       const num = parseInt(e.key, 10);
       if (!isNaN(num) && num >= 1 && num <= 9) {
@@ -623,6 +636,8 @@ export default function App() {
 
   return (
     <div className="relative flex h-screen w-screen flex-col overflow-hidden bg-bg-obsidian text-text-mana">
+      {/* Reactive Airship Bridge Canvas */}
+      <ReactiveBridgeCanvas activeDepartment={activeDepartment} alertsCount={headerTelemetry.activeAlertsCount} />
 
       {/* Dashboard header */}
       <SkyHeader
@@ -640,6 +655,8 @@ export default function App() {
         }}
         isDepartmentConsoleOpen={isDepartmentConsoleOpen}
         onSignOut={handleSignOut}
+        zoomScale={canvasScale}
+        onResetZoom={handleResetCanvasZoom}
       />
 
       {/* Screen Views */}
@@ -654,18 +671,27 @@ export default function App() {
               onJumpToClient={handleJumpToClient}
               onCommand={handleTerminalCommand}
               commandFeedback={intercomStatus}
+              isCollapsed={isSidebarCollapsed}
+              onToggleCollapse={() => setIsSidebarCollapsed((prev) => !prev)}
             />
-            <KanbanCanvas
-              units={units}
-              activeFilters={activeFilters}
-              activeUnitId={activeUnitId}
-              selectedUnitIds={selectedUnitIds}
-              onSelectUnit={handleSelectUnit}
-              onUpdateUnitPosition={handleUpdateUnitPosition}
-              gridSnapEnabled={gridSnapEnabled}
-              onLogTerminal={logTerminal}
-              onOpenContextMenu={(x, y, client) => setContextMenu({ x, y, client })}
-            />
+            <div 
+              ref={canvasContainerRef} 
+              className="flex-1 min-h-0 min-w-0 overflow-hidden relative cursor-default"
+            >
+              <div style={canvasStyle} className="origin-top-left">
+                <KanbanCanvas
+                  units={units}
+                  activeFilters={activeFilters}
+                  activeUnitId={activeUnitId}
+                  selectedUnitIds={selectedUnitIds}
+                  onSelectUnit={handleSelectUnit}
+                  onUpdateUnitPosition={handleUpdateUnitPosition}
+                  gridSnapEnabled={gridSnapEnabled}
+                  onLogTerminal={logTerminal}
+                  onOpenContextMenu={(x, y, client) => setContextMenu({ x, y, client })}
+                />
+              </div>
+            </div>
           </div>
 
           <WorkspaceConsole
