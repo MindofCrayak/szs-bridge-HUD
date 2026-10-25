@@ -77,6 +77,30 @@ export const KeybindingSettingsModal: React.FC<KeybindingSettingsModalProps> = (
 
   if (!isOpen) return null;
 
+  // Real-time CSS Variable Injections
+  const handleUiScaleChange = (val: number) => {
+    setUiScale(val);
+    document.documentElement.style.setProperty('--ui-scale', val.toString());
+  };
+
+  const handleBayWidthChange = (bayVar: string, px: number, setter: (val: number) => void) => {
+    setter(px);
+    document.documentElement.style.setProperty(bayVar, `${px}px`);
+  };
+
+  const handleColumnScaleChange = (val: number) => {
+    setColumnScale(val);
+    document.documentElement.style.setProperty('--column-scale', val.toString());
+  };
+
+  const handleCanvasThemeChange = (theme: string) => {
+    setCanvasTheme(theme);
+    try {
+      localStorage.setItem('szs_canvas_theme', theme);
+      window.dispatchEvent(new Event('storage'));
+    } catch {}
+  };
+
   const handleSave = () => {
     saveStoredKeymap(keymap);
     onUpdateKeymap(keymap);
@@ -96,7 +120,6 @@ export const KeybindingSettingsModal: React.FC<KeybindingSettingsModalProps> = (
       document.documentElement.style.setProperty('--bay-dossier-w', `${dossierRatio}px`);
       document.documentElement.style.setProperty('--bay-macro-w', `${macroRatio}px`);
 
-      // Dispatch event for ReactiveBridgeCanvas theme
       window.dispatchEvent(new Event('storage'));
     } catch {}
     onLogTerminal?.('Bridge display ergonomics and keybinding matrix saved.', 'action');
@@ -153,7 +176,7 @@ export const KeybindingSettingsModal: React.FC<KeybindingSettingsModalProps> = (
 
         {/* Tab 1: Display & Ergonomics */}
         {activeTab === 'display' && (
-          <div className="flex-1 overflow-y-auto space-y-3.5 pr-1 text-xs">
+          <div className="flex-1 overflow-y-auto space-y-3.5 pr-1 text-xs custom-scrollbar">
             {/* Master UI Scale Slider */}
             <div className="p-3 rounded-lg border border-[#086375]/60 bg-[#086375]/10">
               <div className="flex justify-between items-center mb-1.5 font-bold">
@@ -166,7 +189,7 @@ export const KeybindingSettingsModal: React.FC<KeybindingSettingsModalProps> = (
                 max="1.25"
                 step="0.05"
                 value={uiScale}
-                onChange={(e) => setUiScale(Number(e.target.value))}
+                onChange={(e) => handleUiScaleChange(Number(e.target.value))}
                 className="w-full accent-[#E0CA3C] cursor-pointer"
               />
               <div className="flex justify-between text-[0.6rem] text-[#DDFBD0]/50 mt-1">
@@ -188,7 +211,7 @@ export const KeybindingSettingsModal: React.FC<KeybindingSettingsModalProps> = (
                 max="1.20"
                 step="0.05"
                 value={columnScale}
-                onChange={(e) => setColumnScale(Number(e.target.value))}
+                onChange={(e) => handleColumnScaleChange(Number(e.target.value))}
                 className="w-full accent-[#E0CA3C] cursor-pointer"
               />
               <div className="flex justify-between text-[0.6rem] text-[#DDFBD0]/50 mt-1">
@@ -212,7 +235,7 @@ export const KeybindingSettingsModal: React.FC<KeybindingSettingsModalProps> = (
                   max="360"
                   step="10"
                   value={calRatio}
-                  onChange={(e) => setCalRatio(Number(e.target.value))}
+                  onChange={(e) => handleBayWidthChange('--bay-calendar-w', Number(e.target.value), setCalRatio)}
                   className="w-40 accent-[#E0CA3C] cursor-pointer"
                 />
               </div>
@@ -225,7 +248,7 @@ export const KeybindingSettingsModal: React.FC<KeybindingSettingsModalProps> = (
                   max="560"
                   step="10"
                   value={centerRatio}
-                  onChange={(e) => setCenterRatio(Number(e.target.value))}
+                  onChange={(e) => handleBayWidthChange('--bay-center-w', Number(e.target.value), setCenterRatio)}
                   className="w-40 accent-[#E0CA3C] cursor-pointer"
                 />
               </div>
@@ -238,7 +261,7 @@ export const KeybindingSettingsModal: React.FC<KeybindingSettingsModalProps> = (
                   max="340"
                   step="10"
                   value={dossierRatio}
-                  onChange={(e) => setDossierRatio(Number(e.target.value))}
+                  onChange={(e) => handleBayWidthChange('--bay-dossier-w', Number(e.target.value), setDossierRatio)}
                   className="w-40 accent-[#E0CA3C] cursor-pointer"
                 />
               </div>
@@ -251,110 +274,126 @@ export const KeybindingSettingsModal: React.FC<KeybindingSettingsModalProps> = (
                   max="360"
                   step="10"
                   value={macroRatio}
-                  onChange={(e) => setMacroRatio(Number(e.target.value))}
+                  onChange={(e) => handleBayWidthChange('--bay-macro-w', Number(e.target.value), setMacroRatio)}
                   className="w-40 accent-[#E0CA3C] cursor-pointer"
                 />
               </div>
             </div>
 
-            {/* Canvas Background Selector */}
-            <div className="p-3 rounded-lg border border-[#086375]/60 bg-[#086375]/10">
-              <span className="font-bold block text-[#E0CA3C] mb-2">
-                Canvas Theme Background:
-              </span>
-              <div className="grid grid-cols-3 gap-2">
-                {[
-                  { id: 'obsidian-grid', label: 'Obsidian Grid' },
-                  { id: 'tactical-hex', label: 'Tactical Hex' },
-                  { id: 'crystal-strata', label: 'Crystal Strata' },
-                ].map((th) => (
-                  <button
-                    key={th.id}
-                    type="button"
-                    onClick={() => setCanvasTheme(th.id)}
-                    className={`p-2 rounded border text-center font-bold text-[0.65rem] transition-all cursor-pointer ${
-                      canvasTheme === th.id
-                        ? 'border-[#E0CA3C] bg-[#E0CA3C]/20 text-[#E0CA3C]'
-                        : 'border-[#086375]/50 bg-[#020500]/60 text-[#DDFBD0]/70 hover:border-[#DDFBD0]'
-                    }`}
-                  >
-                    {th.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Tab 2: Keybindings & RTS Control Groups */}
-        {activeTab === 'keybindings' && (
-          <div className="flex-1 overflow-y-auto space-y-3 pr-1 text-xs">
-            {/* RTS Control Groups Guide */}
+            {/* Reactive Canvas Background Theme Selector */}
             <div className="p-3 rounded-lg border border-[#086375]/60 bg-[#086375]/10 space-y-1.5">
-              <span className="font-bold text-[#E0CA3C] block mb-1">
-                RTS Client Keybinding Engine:
-              </span>
-              <div className="p-2 rounded bg-[#020500]/70 border border-[#086375]/40 text-[0.65rem] space-y-1">
-                <p>
-                  <span className="text-[#FE5F00] font-bold">Shift + 1-9:</span> Binds currently selected client to that numerical slot.
-                </p>
-                <p>
-                  <span className="text-[#E0CA3C] font-bold">1-9 (Unmodified):</span> Instantly recalls the bound client, centers the canvas, and locks the Dossier Bay.
-                </p>
-                <p>
-                  <span className="text-[#DDFBD0]/60 font-bold">0:</span> Clears client lock and returns to Global Monitor.
-                </p>
-              </div>
-            </div>
-
-            {/* Department Shortcuts (Alt + 1..5) */}
-            <div className="p-3 rounded-lg border border-[#086375]/60 bg-[#086375]/10">
-              <span className="font-bold text-[#E0CA3C] block mb-2">
-                Department Navigation (Alt + 1..5):
-              </span>
-              <div className="grid grid-cols-2 gap-2 text-[0.65rem]">
-                {Object.entries(keymap.departments).map(([k, v]) => (
-                  <div key={k} className="flex justify-between p-1.5 rounded bg-[#020500]/70 border border-[#086375]/30">
-                    <span className="text-[#FE5F00] font-bold">{k}</span>
-                    <span className="text-[#DDFBD0]/80 uppercase">{v}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Kanban Density (Ctrl + 1..4) */}
-            <div className="p-3 rounded-lg border border-[#086375]/60 bg-[#086375]/10">
-              <span className="font-bold text-[#E0CA3C] block mb-2">
-                Kanban Topology & Filters (Ctrl + 1..4):
-              </span>
-              <div className="grid grid-cols-2 gap-2 text-[0.65rem]">
-                {Object.entries(keymap.kanbanViews).slice(0, 4).map(([k, v]) => (
-                  <div key={k} className="flex justify-between p-1.5 rounded bg-[#020500]/70 border border-[#086375]/30">
-                    <span className="text-[#E0CA3C] font-bold">{k}</span>
-                    <span className="text-[#DDFBD0]/80 uppercase">{v}</span>
-                  </div>
-                ))}
+              <span className="font-bold block text-[#E0CA3C]">Canvas Background Environment:</span>
+              <div className="grid grid-cols-3 gap-2 text-[0.7rem]">
+                <button
+                  type="button"
+                  onClick={() => handleCanvasThemeChange('obsidian-grid')}
+                  className={`py-1.5 rounded border transition-colors cursor-pointer ${
+                    canvasTheme === 'obsidian-grid'
+                      ? 'border-[#E0CA3C] bg-[#E0CA3C]/20 text-[#E0CA3C] font-bold'
+                      : 'border-[#086375] bg-[#020500] text-[#DDFBD0]/70'
+                  }`}
+                >
+                  OBSIDIAN GRID
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleCanvasThemeChange('tactical-hex')}
+                  className={`py-1.5 rounded border transition-colors cursor-pointer ${
+                    canvasTheme === 'tactical-hex'
+                      ? 'border-[#E0CA3C] bg-[#E0CA3C]/20 text-[#E0CA3C] font-bold'
+                      : 'border-[#086375] bg-[#020500] text-[#DDFBD0]/70'
+                  }`}
+                >
+                  TACTICAL HEX
+                </button>
+                <button
+                  type="button"
+                  onClick={() => handleCanvasThemeChange('void')}
+                  className={`py-1.5 rounded border transition-colors cursor-pointer ${
+                    canvasTheme === 'void'
+                      ? 'border-[#E0CA3C] bg-[#E0CA3C]/20 text-[#E0CA3C] font-bold'
+                      : 'border-[#086375] bg-[#020500] text-[#DDFBD0]/70'
+                  }`}
+                >
+                  ABSOLUTE VOID
+                </button>
               </div>
             </div>
           </div>
         )}
 
-        {/* Footer Actions */}
-        <div className="flex justify-end gap-2 border-t border-[#086375] pt-3 mt-3 shrink-0">
+        {/* Tab 2: Keybindings & RTS Groups */}
+        {activeTab === 'keybindings' && (
+          <div className="flex-1 overflow-y-auto space-y-3 pr-1 text-xs custom-scrollbar">
+            <div className="p-3 rounded-lg border border-[#086375]/60 bg-[#086375]/10">
+              <span className="font-bold block text-[#E0CA3C] mb-2">Tactical Macro Pad (Q..C):</span>
+              <div className="grid grid-cols-3 gap-2">
+                {(['Q', 'W', 'E', 'A', 'S', 'D', 'Z', 'X', 'C'] as const).map((key) => (
+                  <div key={key} className="flex items-center justify-between border border-[#086375]/50 bg-[#020500] p-1.5 rounded">
+                    <span className="font-bold text-[#E0CA3C]">{key}:</span>
+                    <input
+                      type="text"
+                      maxLength={1}
+                      value={keymap[key]}
+                      onChange={(e) => {
+                        const val = e.target.value.toUpperCase();
+                        if (val) setKeymap((prev) => ({ ...prev, [key]: val }));
+                      }}
+                      className="w-8 text-center bg-[#086375]/20 border border-[#086375] rounded text-white font-bold"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="p-3 rounded-lg border border-[#086375]/60 bg-[#086375]/10 space-y-1">
+              <span className="font-bold block text-[#E0CA3C]">RTS Control Groups (StarCraft Style):</span>
+              <p className="text-[0.65rem] text-[#DDFBD0]/60">
+                • <strong className="text-white">Ctrl + 1..9:</strong> Bind currently selected client card to group slot.
+              </p>
+              <p className="text-[0.65rem] text-[#DDFBD0]/60">
+                • <strong className="text-white">1..9:</strong> Single tap recalls client and centers camera.
+              </p>
+              <p className="text-[0.65rem] text-[#DDFBD0]/60">
+                • <strong className="text-white">Double tap 1..9:</strong> Recalls and enters granular sprint drill-down.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Action Footer */}
+        <div className="flex items-center justify-between border-t border-[#086375] pt-3 mt-3 shrink-0">
           <button
             type="button"
-            onClick={onClose}
-            className="px-3 py-1.5 rounded border border-[#086375] text-[#DDFBD0]/70 hover:text-white transition-colors cursor-pointer text-xs"
+            onClick={() => {
+              handleUiScaleChange(1.0);
+              handleColumnScaleChange(1.0);
+              handleBayWidthChange('--bay-calendar-w', 280, setCalRatio);
+              handleBayWidthChange('--bay-center-w', 420, setCenterRatio);
+              handleBayWidthChange('--bay-dossier-w', 270, setDossierRatio);
+              handleBayWidthChange('--bay-macro-w', 280, setMacroRatio);
+              handleCanvasThemeChange('obsidian-grid');
+            }}
+            className="text-[0.65rem] text-[#DDFBD0]/60 hover:text-white underline cursor-pointer"
           >
-            Cancel
+            Reset Defaults
           </button>
-          <button
-            type="button"
-            onClick={handleSave}
-            className="px-4 py-1.5 rounded bg-[#E0CA3C] text-black font-bold hover:bg-[#ffe359] shadow-[0_0_15px_rgba(224,202,60,0.4)] transition-all cursor-pointer text-xs"
-          >
-            Apply & Save
-          </button>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3 py-1 rounded border border-[#086375] text-[#DDFBD0]/70 hover:bg-[#086375]/20 transition-colors cursor-pointer text-xs"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={handleSave}
+              className="px-4 py-1 rounded bg-[#E0CA3C] text-black font-bold hover:brightness-110 transition-all cursor-pointer text-xs shadow-[0_0_12px_rgba(224,202,60,0.4)]"
+            >
+              SAVE CONFIG
+            </button>
+          </div>
         </div>
       </div>
     </div>

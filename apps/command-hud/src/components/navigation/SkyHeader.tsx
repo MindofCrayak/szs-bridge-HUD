@@ -56,7 +56,7 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
 
   // Dedicated Browser Popup Window Launcher for Display 2 (762x1366)
   const handleSpawnCockpit = () => {
-    window.open('/cockpit', '_blank', 'width=762,height=1366,left=1680,top=0,resizable=yes');
+    window.open('/cockpit', 'SZS_AvionicsCockpit', 'popup=yes,width=762,height=1366,left=1680,top=0,resizable=yes');
   };
 
   return (
@@ -281,7 +281,7 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
             title="Unified System Settings & Ergonomics Engine"
           >
             <i className="fa-solid fa-gear text-[0.65rem]" />
-            <span>⚙️ SETTINGS</span>
+            <span>SETTINGS</span>
           </button>
         )}
 

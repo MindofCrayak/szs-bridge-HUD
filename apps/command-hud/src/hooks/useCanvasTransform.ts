@@ -10,6 +10,7 @@ export interface CanvasTransformReturn {
   resetTransform: () => void;
   isPanning: boolean;
   transformStyle: React.CSSProperties;
+  handlePointerDown: (e: React.PointerEvent) => void;
 }
 
 export function useCanvasTransform(
@@ -50,16 +51,17 @@ export function useCanvasTransform(
     return () => el.removeEventListener('wheel', handleWheel);
   }, [setScale]);
 
-  // Left-drag (on canvas background) or middle-click drag anywhere
-  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+  // Pointer-down handler attached to outermost canvas wrapper
+  const handlePointerDown = useCallback((e: React.PointerEvent) => {
     const isMiddleClick = e.button === 1;
-    const isBackgroundLeftClick = e.button === 0 && (
-      e.target === viewportRef.current ||
-      e.target === stageRef.current ||
-      (e.target as HTMLElement).classList.contains('canvas-pannable-bg')
-    );
+    const target = e.target as HTMLElement | null;
+    const isBackground = target === viewportRef.current ||
+      target === stageRef.current ||
+      target?.classList.contains('canvas-pannable-bg') ||
+      target?.getAttribute('data-canvas-bg') === 'true' ||
+      target?.getAttribute('data-theme') !== null;
 
-    if (isMiddleClick || isBackgroundLeftClick) {
+    if (isMiddleClick || (e.button === 0 && isBackground)) {
       e.preventDefault();
       setIsPanning(true);
       panStartRef.current = {
@@ -68,13 +70,16 @@ export function useCanvasTransform(
         initialPanX: pan.x,
         initialPanY: pan.y,
       };
+      try {
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      } catch {}
     }
   }, [pan.x, pan.y]);
 
   useEffect(() => {
     if (!isPanning) return;
 
-    const handleMouseMove = (e: MouseEvent) => {
+    const handlePointerMove = (e: PointerEvent) => {
       const dx = e.clientX - panStartRef.current.startX;
       const dy = e.clientY - panStartRef.current.startY;
       setPan({
@@ -83,15 +88,15 @@ export function useCanvasTransform(
       });
     };
 
-    const handleMouseUp = () => {
+    const handlePointerUp = () => {
       setIsPanning(false);
     };
 
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('pointermove', handlePointerMove);
+    window.addEventListener('pointerup', handlePointerUp);
     return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', handlePointerUp);
     };
   }, [isPanning]);
 
@@ -118,5 +123,6 @@ export function useCanvasTransform(
     resetTransform,
     isPanning,
     transformStyle,
+    handlePointerDown,
   };
 }

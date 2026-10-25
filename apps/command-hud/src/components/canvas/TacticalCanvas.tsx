@@ -75,7 +75,15 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
   scale: propScale,
   setScale: propSetScale,
 }) => {
-  const { viewportRef, stageRef, pan, scale, isPanning, resetTransform } = useCanvasTransform(propScale, propSetScale);
+  const {
+    viewportRef,
+    stageRef,
+    pan,
+    scale,
+    isPanning,
+    resetTransform,
+    handlePointerDown,
+  } = useCanvasTransform(propScale, propSetScale);
 
   // Read canvas theme from local storage
   const [canvasTheme, setCanvasTheme] = useState<string>(() => {
@@ -129,12 +137,17 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
     <div
       ref={viewportRef}
       data-canvas-bg="true"
+      onPointerDown={handlePointerDown}
       className="relative w-full h-full overflow-hidden bg-[#020500] select-none cursor-grab active:cursor-grabbing canvas-pannable-bg"
     >
       {/* Module 2: Customizable Canvas Background Layer */}
-      <div className="absolute inset-0 z-0 pointer-events-none" data-theme={canvasTheme}>
+      <div
+        className="absolute inset-0 z-0 pointer-events-none canvas-pannable-bg"
+        data-theme={canvasTheme}
+        data-canvas-bg="true"
+      >
         {canvasTheme === 'tactical-hex' ? (
-          <svg className="w-full h-full opacity-20" xmlns="http://www.w3.org/2000/svg">
+          <svg className="w-full h-full opacity-20 pointer-events-none" xmlns="http://www.w3.org/2000/svg">
             <defs>
               <pattern id="tactical-hex-grid" width="40" height="69.282" patternUnits="userSpaceOnUse" patternTransform="scale(1)">
                 <path d="M 40 0 L 20 11.547 L 0 0 L 0 23.094 L 20 34.641 L 40 23.094 Z M 0 34.641 L 20 46.188 L 0 57.735 L 0 80.829 L 20 92.376 L 40 80.829 L 40 57.735 L 20 46.188 Z" fill="none" stroke="#086375" strokeWidth="1" />
@@ -143,9 +156,9 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
             <rect width="100%" height="100%" fill="url(#tactical-hex-grid)" />
           </svg>
         ) : canvasTheme === 'void' ? (
-          <div className="w-full h-full bg-[#020500]" />
+          <div className="w-full h-full bg-[#020500] pointer-events-none" />
         ) : (
-          <div className="crm-grid w-full h-full opacity-40" />
+          <div className="crm-grid w-full h-full opacity-40 pointer-events-none" />
         )}
       </div>
 
@@ -177,7 +190,7 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
         </div>
       )}
 
-      {/* Hardware-Accelerated 2D World Space Layer (Transparent, Unbound block, NOT flex) */}
+      {/* Hardware-Accelerated 2D World Space Layer */}
       <div
         ref={stageRef}
         data-canvas-bg="true"

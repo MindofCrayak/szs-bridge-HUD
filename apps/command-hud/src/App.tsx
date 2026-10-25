@@ -46,6 +46,15 @@ interface AppProps {
 }
 
 export default function App({ isDemoModeInitial = false }: AppProps) {
+  // Module 5: Strict route isolation for secondary cockpit window
+  if (typeof window !== 'undefined' && window.location.pathname.startsWith('/cockpit')) {
+    return (
+      <div className="w-screen h-screen max-h-[1366px] overflow-hidden bg-[#020500] flex items-center justify-center">
+        <AvionicsCockpitView />
+      </div>
+    );
+  }
+
   const [currentScreen, setCurrentScreen] = useState<ScreenView>('dashboard');
   const [isDemoMode, setIsDemoMode] = useState<boolean>(isDemoModeInitial);
   const [clients, setClients] = useState<ClientRecord[]>([]);
