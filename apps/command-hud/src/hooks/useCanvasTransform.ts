@@ -5,15 +5,21 @@ export interface CanvasTransformReturn {
   stageRef: React.RefObject<HTMLDivElement | null>;
   scale: number;
   pan: { x: number; y: number };
-  setScale: React.Dispatch<React.SetStateAction<number>>;
+  setScale: (value: number | ((prev: number) => number)) => void;
   setPan: React.Dispatch<React.SetStateAction<{ x: number; y: number }>>;
   resetTransform: () => void;
   isPanning: boolean;
   transformStyle: React.CSSProperties;
 }
 
-export function useCanvasTransform(initialScale = 1.0): CanvasTransformReturn {
-  const [scale, setScale] = useState<number>(initialScale);
+export function useCanvasTransform(
+  externalScale?: number,
+  externalSetScale?: (value: number | ((prev: number) => number)) => void,
+): CanvasTransformReturn {
+  const [internalScale, setInternalScale] = useState<number>(1.0);
+  const scale = externalScale !== undefined ? externalScale : internalScale;
+  const setScale = externalSetScale !== undefined ? externalSetScale : setInternalScale;
+
   const [pan, setPan] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState<boolean>(false);
 
@@ -42,11 +48,10 @@ export function useCanvasTransform(initialScale = 1.0): CanvasTransformReturn {
 
     el.addEventListener('wheel', handleWheel, { passive: false });
     return () => el.removeEventListener('wheel', handleWheel);
-  }, []);
+  }, [setScale]);
 
   // Left-drag (on canvas background) or middle-click drag anywhere
   const handleMouseDown = useCallback((e: React.MouseEvent) => {
-    // Only pan if middle click (button 1) OR left click on empty background
     const isMiddleClick = e.button === 1;
     const isBackgroundLeftClick = e.button === 0 && (
       e.target === viewportRef.current ||
@@ -93,7 +98,7 @@ export function useCanvasTransform(initialScale = 1.0): CanvasTransformReturn {
   const resetTransform = useCallback(() => {
     setScale(1.0);
     setPan({ x: 0, y: 0 });
-  }, []);
+  }, [setScale]);
 
   const transformStyle: React.CSSProperties = {
     transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${scale})`,

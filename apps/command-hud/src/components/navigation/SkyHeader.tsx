@@ -56,17 +56,7 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
 
   // Dedicated Browser Popup Window Launcher for Display 2 (762x1366)
   const handleSpawnCockpit = () => {
-    const width = 762;
-    const height = 1366;
-    const left = window.screen.availLeft + window.screen.width;
-    const top = window.screen.availTop;
-    const windowFeatures = `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=yes`;
-
-    const popup = window.open('/cockpit', 'SZS_AvionicsCockpit', windowFeatures);
-    if (!popup || popup.closed || typeof popup.closed === 'undefined') {
-      // If browser blocked popup, fallback to in-app screen switch
-      onSpawnCockpit?.();
-    }
+    window.open('/cockpit', '_blank', 'width=762,height=1366,left=1680,top=0,resizable=yes');
   };
 
   return (
@@ -170,19 +160,6 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
           <span>DEPARTMENTS</span>
         </button>
 
-        {/* Unified Settings Gear Button (De-duplicated) */}
-        {onOpenKeybindings && (
-          <button
-            type="button"
-            onClick={onOpenKeybindings}
-            className="flex items-center gap-1.5 rounded border border-[#E0CA3C]/60 bg-[#E0CA3C]/10 px-2.5 py-1 font-mono text-[0.61rem] text-[#E0CA3C] hover:bg-[#E0CA3C] hover:text-black transition-all cursor-pointer font-bold shadow-[0_0_8px_rgba(224,202,60,0.2)]"
-            title="Unified System Settings & Ergonomics Engine"
-          >
-            <i className="fa-solid fa-gear text-[0.65rem]" />
-            <span>⚙️ SETTINGS</span>
-          </button>
-        )}
-
         {/* Tactical Zoom Popover Control */}
         <div className="relative" ref={zoomPopoverRef}>
           <button
@@ -208,7 +185,7 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
                 <span className="text-highlight-gold font-bold text-xs">{Math.round(zoomScale * 100)}%</span>
               </div>
 
-              {/* Range Slider */}
+              {/* Range Slider - Wires directly to onSetZoom */}
               <div className="mb-3">
                 <input
                   type="range"
@@ -295,6 +272,19 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
           <span>SPAWN COCKPIT [762×1366]</span>
         </button>
 
+        {/* Module 5: Single Unified Settings Gear Button */}
+        {onOpenKeybindings && (
+          <button
+            type="button"
+            onClick={onOpenKeybindings}
+            className="flex items-center gap-1.5 rounded border border-[#E0CA3C]/60 bg-[#E0CA3C]/10 px-2.5 py-1 font-mono text-[0.61rem] text-[#E0CA3C] hover:bg-[#E0CA3C] hover:text-black transition-all cursor-pointer font-bold shadow-[0_0_8px_rgba(224,202,60,0.2)]"
+            title="Unified System Settings & Ergonomics Engine"
+          >
+            <i className="fa-solid fa-gear text-[0.65rem]" />
+            <span>⚙️ SETTINGS</span>
+          </button>
+        )}
+
         <button
           type="button"
           onClick={onSignOut}
@@ -309,7 +299,7 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
       <div className="flex flex-wrap items-center justify-end gap-1.5 font-mono text-[0.61rem]">
         <div className="flex items-center gap-1.5 rounded border border-accent-teal bg-primary-plum/45 px-2 py-1 text-gold" title="Total contract value of active clients">
           <i className="fa-solid fa-chart-line text-accent-teal" />
-          <span>PIPELINE: ${telemetry ? telemetry.pipelineMrr.toLocaleString() : '0'}</span>
+          <span>PIPELINE: ${telemetry ? (telemetry.pipelineMrr ?? 0).toLocaleString() : '0'}</span>
         </div>
         <div className="flex items-center gap-1.5 rounded border border-accent-teal bg-primary-plum/45 px-2 py-1 text-text-mana" title="Clients in building or testing stages">
           <i className="fa-solid fa-layer-group text-accent-teal" />

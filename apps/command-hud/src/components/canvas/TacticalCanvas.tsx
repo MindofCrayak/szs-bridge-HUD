@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useCanvasTransform } from '../../hooks/useCanvasTransform';
 import { ClientRecord, ProjectRecord } from '../../types';
 import { ACCOUNT_PHASES, SPRINT_STAGES } from '../../data/pipeline';
@@ -25,7 +25,6 @@ const PHASE_COLORS: Record<string, string> = {
   'phase-06': '#8A9A86',
 };
 
-// Compute default macro layout positions
 function createInitialMacroColumns(): ColumnState[] {
   const columnWidth = 380;
   const gap = 24;
@@ -47,7 +46,6 @@ function createInitialMacroColumns(): ColumnState[] {
   }));
 }
 
-// Compute default granular layout positions
 function createInitialSprintColumns(): ColumnState[] {
   const columnWidth = 300;
   const gap = 20;
@@ -74,8 +72,30 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
   selectedClientId,
   onSelectClient,
   onOpenContextMenu,
+  scale: propScale,
+  setScale: propSetScale,
 }) => {
-  const { viewportRef, stageRef, pan, scale, isPanning, resetTransform } = useCanvasTransform(1.0);
+  const { viewportRef, stageRef, pan, scale, isPanning, resetTransform } = useCanvasTransform(propScale, propSetScale);
+
+  // Read canvas theme from local storage
+  const [canvasTheme, setCanvasTheme] = useState<string>(() => {
+    try {
+      return localStorage.getItem('szs_canvas_theme') || 'obsidian-grid';
+    } catch {
+      return 'obsidian-grid';
+    }
+  });
+
+  useEffect(() => {
+    const handleStorageChange = () => {
+      try {
+        const theme = localStorage.getItem('szs_canvas_theme') || 'obsidian-grid';
+        setCanvasTheme(theme);
+      } catch {}
+    };
+    window.addEventListener('storage', handleStorageChange);
+    return () => window.removeEventListener('storage', handleStorageChange);
+  }, []);
 
   // In-Place Option A Drill-Down State
   const [drillDownClient, setDrillDownClient] = useState<ClientRecord | null>(null);
@@ -111,8 +131,23 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
       data-canvas-bg="true"
       className="relative w-full h-full overflow-hidden bg-[#020500] select-none cursor-grab active:cursor-grabbing canvas-pannable-bg"
     >
-      {/* Background Tactical Grid & Scanlines */}
-      <div className="crm-grid pointer-events-none absolute inset-0 opacity-40" />
+      {/* Module 2: Customizable Canvas Background Layer */}
+      <div className="absolute inset-0 z-0 pointer-events-none" data-theme={canvasTheme}>
+        {canvasTheme === 'tactical-hex' ? (
+          <svg className="w-full h-full opacity-20" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <pattern id="tactical-hex-grid" width="40" height="69.282" patternUnits="userSpaceOnUse" patternTransform="scale(1)">
+                <path d="M 40 0 L 20 11.547 L 0 0 L 0 23.094 L 20 34.641 L 40 23.094 Z M 0 34.641 L 20 46.188 L 0 57.735 L 0 80.829 L 20 92.376 L 40 80.829 L 40 57.735 L 20 46.188 Z" fill="none" stroke="#086375" strokeWidth="1" />
+              </pattern>
+            </defs>
+            <rect width="100%" height="100%" fill="url(#tactical-hex-grid)" />
+          </svg>
+        ) : canvasTheme === 'void' ? (
+          <div className="w-full h-full bg-[#020500]" />
+        ) : (
+          <div className="crm-grid w-full h-full opacity-40" />
+        )}
+      </div>
 
       {/* Breadcrumb Bar (When drilled down into 10 granular stages) */}
       {drillDownClient && (
@@ -142,7 +177,7 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
         </div>
       )}
 
-      {/* Hardware-Accelerated 2D World Space Layer */}
+      {/* Hardware-Accelerated 2D World Space Layer (Transparent, Unbound block, NOT flex) */}
       <div
         ref={stageRef}
         data-canvas-bg="true"
@@ -156,7 +191,7 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
           height: '3000px',
           transition: isPanning ? 'none' : 'transform 75ms ease-out',
         }}
-        className="canvas-world-layer pointer-events-auto"
+        className="canvas-world-layer bg-transparent border-none block pointer-events-auto"
       >
         {!drillDownClient ? (
           // MACRO SPATIAL VIEW: 6 Floating, Reshapable, Lockable Columns

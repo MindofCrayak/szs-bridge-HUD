@@ -81,6 +81,8 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
     }
   });
 
+  const [canvasZoom, setCanvasZoom] = useState<number>(1.0);
+
   const handleToggleSkin = useCallback(() => {
     setCurrentSkin((prev) => {
       const next = prev === 'heraldry-gold' ? 'stealth-obsidian' : 'heraldry-gold';
@@ -384,6 +386,9 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
           currentSkin={currentSkin}
           onToggleSkin={handleToggleSkin}
           onSpawnCockpit={() => setCurrentScreen('cockpit')}
+          zoomScale={canvasZoom}
+          onSetZoom={setCanvasZoom}
+          onResetZoom={() => setCanvasZoom(1.0)}
         />
 
         {/* Viewport 1: Tactical Horizon (Dashboard) */}
@@ -395,6 +400,8 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
               selectedClientId={selectedClientId}
               onSelectClient={setSelectedClientId}
               onForceAdvance={handleForceAdvance}
+              scale={canvasZoom}
+              setScale={setCanvasZoom}
               onOpenContextMenu={(x, y, item) => {
                 if ('AccountPhase' in item) {
                   setContextMenu({ x, y, client: item });
