@@ -25,7 +25,7 @@ export interface ChassisLifecycleReturn {
  * 4. Bypass: Any key or click clears timers and snaps to Stage 4.
  */
 export function useChassisLifecycle(): ChassisLifecycleReturn {
-  const [bootStage, setBootStage] = useState<BootStage>(0);
+  const [bootStage, setBootStage] = useState<BootStage>(4);
   const [isBypassed, setIsBypassed] = useState<boolean>(false);
   const timersRef = useRef<number[]>([]);
   const hasInitializedRef = useRef<boolean>(false);

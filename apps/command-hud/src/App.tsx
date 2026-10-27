@@ -403,34 +403,38 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
 
         {/* Viewport 1: Tactical Horizon (Dashboard) */}
         {currentScreen === 'dashboard' && (
-          <div className="flex-1 flex flex-col min-h-0 relative overflow-hidden">
-            {/* Tactical Canvas: Infinite Pan/Zoom & Hierarchical Semantic Zoom */}
-            <TacticalCanvas
-              clients={clients}
-              selectedClientId={selectedClientId}
-              onSelectClient={setSelectedClientId}
-              onUpdateClient={handleUpdateClient}
-              onForceAdvance={handleForceAdvance}
-              scale={canvasZoom}
-              setScale={setCanvasZoom}
-              onWorkbenchChange={setWorkbenchClient}
-              onOpenContextMenu={(x, y, item) => {
-                if ('AccountPhase' in item) {
-                  setContextMenu({ x, y, client: item });
-                }
-              }}
-            />
+          <div className="relative flex-1 w-full overflow-hidden">
+            {/* Tactical Canvas: Full-bleed infinite Pan/Zoom & Hierarchical Semantic Zoom */}
+            <div className="absolute inset-0 z-0">
+              <TacticalCanvas
+                clients={clients}
+                selectedClientId={selectedClientId}
+                onSelectClient={setSelectedClientId}
+                onUpdateClient={handleUpdateClient}
+                onForceAdvance={handleForceAdvance}
+                scale={canvasZoom}
+                setScale={setCanvasZoom}
+                onWorkbenchChange={setWorkbenchClient}
+                onOpenContextMenu={(x, y, item) => {
+                  if ('AccountPhase' in item) {
+                    setContextMenu({ x, y, client: item });
+                  }
+                }}
+              />
+            </div>
 
-            {/* Modular Console Chassis (Bottom HUD) */}
-            <BottomConsoleChassis
-              selectedClient={activeClient}
-              onUpdateClient={handleUpdateClient}
-              onTriggerCommand={(key) => setActiveModal(key)}
-              controlGroups={controlGroups}
-              activeGroupNum={activeGroupNum}
-              onRecallControlGroup={(grp) => handleRecallClientSlot(grp)}
-              context={workbenchClient ? 'CLIENT_WORKBENCH' : 'GLOBAL'}
-            />
+            {/* Modular Console Chassis (Bottom HUD) — Absolute overlay, not a flex sibling */}
+            <div className="absolute bottom-2 left-0 right-0 z-30 pointer-events-none">
+              <BottomConsoleChassis
+                selectedClient={activeClient}
+                onUpdateClient={handleUpdateClient}
+                onTriggerCommand={(key) => setActiveModal(key)}
+                controlGroups={controlGroups}
+                activeGroupNum={activeGroupNum}
+                onRecallControlGroup={(grp) => handleRecallClientSlot(grp)}
+                context={workbenchClient ? 'CLIENT_WORKBENCH' : 'GLOBAL'}
+              />
+            </div>
           </div>
         )}
 

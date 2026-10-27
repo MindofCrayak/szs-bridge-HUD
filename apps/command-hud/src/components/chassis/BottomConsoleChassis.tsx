@@ -46,7 +46,7 @@ export const BottomConsoleChassis: React.FC<BottomConsoleChassisProps> = ({
 
   return (
     <footer
-      className="relative z-30 mt-auto flex w-full flex-row gap-6 select-none shrink-0 p-3 pt-1 bg-transparent pointer-events-none"
+      className="relative z-30 flex w-full flex-row gap-6 select-none p-3 pt-1 bg-transparent pointer-events-none justify-center"
       style={{ transform: 'scale(var(--ui-scale, 1))', transformOrigin: 'bottom center' }}
     >
       {/* Bay 1: Calendar Bay */}
