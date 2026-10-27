@@ -3,6 +3,7 @@ import { useCanvasTransform } from '../../hooks/useCanvasTransform';
 import { ClientRecord, ProjectRecord, AccountPhase } from '../../types';
 import { SlimVitalsCard } from './SlimVitalsCard';
 import { ProjectWorkbenchView } from './ProjectWorkbenchView';
+import { CanvasFloatingToolbar } from './CanvasFloatingToolbar';
 
 interface TacticalCanvasProps {
   clients: ClientRecord[];
@@ -50,8 +51,8 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
   onWorkbenchChange,
   workbenchClient: propWorkbenchClient,
   accessToken,
-  interactionMode = 'drag',
-  showNonStructural = true,
+  interactionMode: propInteractionMode = 'drag',
+  showNonStructural: propShowNonStructural = true,
 }) => {
   const {
     viewportRef,
@@ -64,6 +65,10 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
     setPan,
     setScale,
   } = useCanvasTransform(propScale, propSetScale);
+
+  // Local interaction mode and non-structural toggle for canvas toolbar
+  const [interactionMode, setInteractionMode] = useState<'drag' | 'lock' | 'edit'>(propInteractionMode);
+  const [showNonStructural, setShowNonStructural] = useState<boolean>(propShowNonStructural);
 
   // Read canvas theme from local storage
   const [canvasTheme, setCanvasTheme] = useState<string>(() => {
@@ -134,7 +139,6 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
     setInternalWorkbenchClient(client);
     onSelectClient(client.ClientID);
     onWorkbenchChange?.(client);
-    // Smooth-pan camera to (0,0) and focus
     setPan({ x: 0, y: 0 });
     setScale(1.0);
   };
@@ -193,7 +197,6 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
 
     const pos = cardPositions[client.ClientID];
     if (pos) {
-      // Calculate intersection with Macro Zones
       const cardCenterX = pos.x + 190;
       const matchedZone = MACRO_ZONES.find(
         (z) => cardCenterX >= z.x && cardCenterX <= z.x + z.width
@@ -216,6 +219,17 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
       onPointerDown={handlePointerDown}
       className="relative w-full h-full overflow-hidden bg-[#020500] select-none cursor-grab active:cursor-grabbing canvas-pannable-bg z-0"
     >
+      {/* ── STEP 4: FLOATING CANVAS TOOLBAR (TOP-LEFT OVERLAY) ── */}
+      <CanvasFloatingToolbar
+        mode={interactionMode}
+        onSetMode={setInteractionMode}
+        showNonStructural={showNonStructural}
+        onToggleNonStructural={() => setShowNonStructural((p) => !p)}
+        scale={scale}
+        onSetScale={setScale}
+        onResetTransform={resetTransform}
+      />
+
       {/* Module 2: Customizable Canvas Background Layer */}
       <div
         className="absolute inset-0 z-[-1] pointer-events-none canvas-pannable-bg"
@@ -238,14 +252,15 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
         )}
       </div>
 
-      {/* ── TIER 2: PROJECT WORKBENCH VIEW ─────────────────────────── */}
+      {/* ── TIER 2: PROJECT WORKBENCH VIEW (NOW DRIVEN BY SHARED CAMERA PAN & ZOOM) ── */}
       {workbenchClient ? (
-        <div className="relative z-30 w-full h-full">
+        <div className="relative z-30 w-full h-full pointer-events-none">
           <ProjectWorkbenchView
             client={workbenchClient}
             onExit={handleCloseWorkbench}
             onUpdateClient={onUpdateClient}
             cameraZoom={scale}
+            cameraPan={pan}
             accessToken={accessToken}
             interactionMode={interactionMode}
             showNonStructural={showNonStructural}
@@ -270,6 +285,7 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
             width: '5000px',
             height: '3000px',
             transition: isPanning ? 'none' : 'transform 75ms ease-out',
+            willChange: isPanning ? 'transform' : 'auto',
           }}
           className="canvas-world-layer bg-transparent border-none block pointer-events-auto z-10"
         >
@@ -346,19 +362,6 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
             );
           })}
         </div>
-      )}
-
-      {/* Recenter Horizon Control Pill */}
-      {!workbenchClient && (
-        <button
-          type="button"
-          onClick={resetTransform}
-          className="absolute bottom-4 right-4 z-20 flex items-center gap-1.5 rounded-full border border-[#086375] bg-[#020500]/90 px-3.5 py-1.5 font-mono text-[0.65rem] text-[#DDFBD0]/70 hover:border-[#E0CA3C] hover:text-[#E0CA3C] transition-all shadow-lg cursor-pointer"
-          title="Reset canvas pan & zoom (Alt+0)"
-        >
-          <i className="fa-solid fa-arrows-to-dot text-xs text-[#E0CA3C]" />
-          <span>RECENTER HORIZON</span>
-        </button>
       )}
     </div>
   );

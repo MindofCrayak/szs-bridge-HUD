@@ -33,29 +33,56 @@ export function useCanvasTransform(
     initialPanY: 0,
   });
 
-  // Non-passive wheel handler for Alt + Scroll Wheel zoom
+  // Non-passive wheel handler:
+  // Supports wheel zoom toward cursor (clamp: 0.20 to 3.0)
+  // Both plain wheel on background canvas, Alt+wheel, and Ctrl+wheel work, while preventing browser zoom
   useEffect(() => {
     const el = viewportRef.current;
     if (!el) return;
 
     const handleWheel = (e: WheelEvent) => {
-      if (e.altKey) {
-        e.preventDefault();
-        e.stopPropagation();
-        const delta = e.deltaY < 0 ? 0.05 : -0.05;
-        setScale((prev) => Math.min(Math.max(0.10, Number((prev + delta).toFixed(2))), 1.60));
+      // Check if target is inside an interactive scrollable area or dialog
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('input, textarea, [role="dialog"], .overflow-y-auto')) {
+        return;
       }
+
+      e.preventDefault();
+      e.stopPropagation();
+
+      const zoomFactor = e.deltaY < 0 ? 1.08 : 0.92;
+
+      setScale((prevScale) => {
+        const nextScale = Math.min(3.0, Math.max(0.20, Number((prevScale * zoomFactor).toFixed(3))));
+
+        // Zoom toward mouse pointer coordinates
+        if (el) {
+          const rect = el.getBoundingClientRect();
+          const mouseX = e.clientX - rect.left;
+          const mouseY = e.clientY - rect.top;
+
+          setPan((prevPan) => {
+            const scaleRatio = nextScale / prevScale;
+            const newPanX = mouseX - (mouseX - prevPan.x) * scaleRatio;
+            const newPanY = mouseY - (mouseY - prevPan.y) * scaleRatio;
+            return { x: Math.round(newPanX), y: Math.round(newPanY) };
+          });
+        }
+
+        return nextScale;
+      });
     };
 
     el.addEventListener('wheel', handleWheel, { passive: false });
     return () => el.removeEventListener('wheel', handleWheel);
   }, [setScale]);
 
-  // Pointer-down handler attached to outermost canvas wrapper
+  // Pointer-down handler: left click on background or middle-click anywhere starts pan
   const handlePointerDown = useCallback((e: React.PointerEvent) => {
     const isMiddleClick = e.button === 1;
     const target = e.target as HTMLElement | null;
-    const isBackground = target === viewportRef.current ||
+    const isBackground =
+      target === viewportRef.current ||
       target === stageRef.current ||
       target?.classList.contains('canvas-pannable-bg') ||
       target?.getAttribute('data-canvas-bg') === 'true' ||
@@ -83,8 +110,8 @@ export function useCanvasTransform(
       const dx = e.clientX - panStartRef.current.startX;
       const dy = e.clientY - panStartRef.current.startY;
       setPan({
-        x: panStartRef.current.initialPanX + dx,
-        y: panStartRef.current.initialPanY + dy,
+        x: Math.round(panStartRef.current.initialPanX + dx),
+        y: Math.round(panStartRef.current.initialPanY + dy),
       });
     };
 
@@ -100,17 +127,31 @@ export function useCanvasTransform(
     };
   }, [isPanning]);
 
+  // Reset transform with Home key support
   const resetTransform = useCallback(() => {
     setScale(1.0);
     setPan({ x: 0, y: 0 });
   }, [setScale]);
 
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Home') {
+        const activeTag = document.activeElement?.tagName.toLowerCase();
+        if (activeTag !== 'input' && activeTag !== 'textarea') {
+          e.preventDefault();
+          resetTransform();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [resetTransform]);
+
   const transformStyle: React.CSSProperties = {
     transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${scale})`,
-    transformOrigin: 'top left',
-    width: `${(1 / Math.max(scale, 0.1)) * 100}%`,
-    height: `${(1 / Math.max(scale, 0.1)) * 100}%`,
+    transformOrigin: '0 0',
     transition: isPanning ? 'none' : 'transform 75ms ease-out',
+    willChange: isPanning ? 'transform' : 'auto',
   };
 
   return {
