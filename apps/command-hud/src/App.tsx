@@ -16,6 +16,7 @@ import {
   ClientUnit
 } from './types';
 import { SkyHeader } from './components/navigation/SkyHeader';
+import { BottomStatusStrip } from './components/navigation/BottomStatusStrip';
 import { MultiAgentDispatch } from './components/navigation/MultiAgentDispatch';
 import { DepartmentHeaderTray } from './components/canvas/DepartmentHeaderTray';
 import { TacticalCanvas } from './components/canvas/TacticalCanvas';
@@ -405,34 +406,29 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
 
       {/* Main Horizon Workspace */}
       <main className="h-full flex flex-col relative overflow-hidden z-[115]">
-        {/* Top SkyHeader */}
-        <SkyHeader
-          currentScreen={currentScreen}
-          telemetry={headerTelemetry}
-          isBackendConnected={Boolean(accessToken) || isDemoMode}
-          onSelectScreen={setCurrentScreen}
-          onOpenDepartments={() => setIsDepartmentConsoleOpen((prev) => !prev)}
-          isDepartmentConsoleOpen={isDepartmentConsoleOpen}
-          onSignOut={handleSignOut}
-          onOpenKeybindings={() => setIsKeymapModalOpen(true)}
-          currentSkin={currentSkin}
-          onToggleSkin={handleToggleSkin}
-          onSpawnCockpit={() => setCurrentScreen('cockpit')}
-          zoomScale={canvasZoom}
-          onSetZoom={setCanvasZoom}
-          onResetZoom={() => setCanvasZoom(1.0)}
-          clients={clients}
-          activeClientId={selectedClientId}
-          onSelectClient={(c) => {
-            setSelectedClientId(c.ClientID);
-            setWorkbenchClient(c);
-            setCurrentScreen('dashboard');
-          }}
-          interactionMode={interactionMode}
-          onSetInteractionMode={setInteractionMode}
-          showNonStructural={showNonStructural}
-          onToggleNonStructural={() => setShowNonStructural((prev) => !prev)}
-        />
+        {/* Top SkyHeader (Single 48px Row) */}
+        <HudErrorBoundary fallbackTitle="SKY HEADER FAULT">
+          <SkyHeader
+            currentScreen={currentScreen}
+            telemetry={headerTelemetry}
+            isBackendConnected={Boolean(accessToken) || isDemoMode}
+            onSelectScreen={setCurrentScreen}
+            onOpenDepartments={() => setIsDepartmentConsoleOpen((prev) => !prev)}
+            isDepartmentConsoleOpen={isDepartmentConsoleOpen}
+            onSignOut={handleSignOut}
+            onOpenKeybindings={() => setIsKeymapModalOpen(true)}
+            currentSkin={currentSkin}
+            onToggleSkin={handleToggleSkin}
+            onSpawnCockpit={() => setCurrentScreen('cockpit')}
+            clients={clients}
+            activeClientId={selectedClientId}
+            onSelectClient={(c) => {
+              setSelectedClientId(c.ClientID);
+              setWorkbenchClient(c);
+              setCurrentScreen('dashboard');
+            }}
+          />
+        </HudErrorBoundary>
 
         {/* Viewport 1: Tactical Horizon (Dashboard) */}
         {currentScreen === 'dashboard' && (
@@ -551,6 +547,12 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
             onNavigateToDashboard={() => setCurrentScreen('dashboard')}
           />
         )}
+
+        {/* Persistent 24px Bottom Status Strip */}
+        <BottomStatusStrip
+          telemetry={headerTelemetry}
+          isBackendConnected={Boolean(accessToken) || isDemoMode}
+        />
       </main>
 
       {/* Settings Modal */}

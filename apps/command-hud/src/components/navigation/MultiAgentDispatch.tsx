@@ -144,25 +144,40 @@ export const MultiAgentDispatch: React.FC<MultiAgentDispatchProps> = ({
             {isCollapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
           </button>
 
-          {/* Subroutine Buttons [A] [P] [O] [D] [V] [D] */}
-          {agents.map((agent) => (
-            <button
-              key={agent}
-              type="button"
-              onClick={() => {
-                onSelectDepartment?.(agent);
-                setIsCollapsed(false); // Open drawer on agent click
-              }}
-              className={`w-8 h-8 rounded border flex items-center justify-center text-xs font-mono font-bold transition-all cursor-pointer ${
-                activeDepartment === agent
-                  ? 'border-[#FE5F00] text-[#FE5F00] bg-[#5F0F40]/40 shadow-[0_0_10px_rgba(254,95,0,0.4)]'
-                  : 'border-[#086375] text-[#DDFBD0]/70 hover:border-[#E0CA3C] hover:text-[#E0CA3C]'
-              }`}
-              title={agent}
-            >
-              {agent[0]}
-            </button>
-          ))}
+          {/* Subroutine Buttons [A] [P] [O] [D] [V] [D] - Distinct icons and styles for Dolores vs Daisy */}
+          {agents.map((agent) => {
+            const isDolores = agent === 'Dolores';
+            const isDaisy = agent === 'Daisy';
+            const isActive = activeDepartment === agent;
+
+            // Visual distinction: Dolores is Delivery/Gantt (magenta/plum), Daisy is MCC/Audience (gold/amber)
+            const badgeColor = isDolores
+              ? 'text-[#f472b6] border-[#ec4899]/60 hover:border-[#f472b6]'
+              : isDaisy
+              ? 'text-[#E0CA3C] border-[#E0CA3C]/60 hover:border-[#E0CA3C]'
+              : 'text-[#DDFBD0]/70 border-[#086375] hover:border-[#E0CA3C] hover:text-[#E0CA3C]';
+
+            return (
+              <button
+                key={agent}
+                type="button"
+                onClick={() => {
+                  onSelectDepartment?.(agent);
+                  setIsCollapsed(false); // Open drawer on agent click
+                }}
+                className={`w-8 h-8 rounded border flex flex-col items-center justify-center font-mono font-bold transition-all cursor-pointer relative group ${
+                  isActive
+                    ? 'border-[#FE5F00] text-[#FE5F00] bg-[#5F0F40]/40 shadow-[0_0_10px_rgba(254,95,0,0.4)]'
+                    : badgeColor
+                }`}
+                title={`${agent} // ${isDolores ? 'Gantt & Delivery Matrix' : isDaisy ? 'MCC & Audience Broadcasts' : 'AI Sub-Routine'}`}
+              >
+                <span className="text-xs">{agent[0]}</span>
+                {isDaisy && <span className="absolute bottom-0.5 right-0.5 w-1 h-1 rounded-full bg-[#E0CA3C]" />}
+                {isDolores && <span className="absolute bottom-0.5 right-0.5 w-1 h-1 rounded-full bg-[#ec4899]" />}
+              </button>
+            );
+          })}
         </div>
 
         {/* Bottom Intercom Shortcut Icon */}

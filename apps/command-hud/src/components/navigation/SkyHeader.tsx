@@ -1,7 +1,6 @@
-import React from 'react';
-import { HudTelemetry, ScreenView, ClientRecord } from '../types';
+import React, { useState, useRef, useEffect } from 'react';
+import { HudTelemetry, ScreenView, ClientRecord } from '../../types';
 import { SolarMapSelector } from './SolarMapSelector';
-import { TacticalRibbonControls, CanvasInteractionMode } from './TacticalRibbonControls';
 
 interface SkyHeaderProps {
   currentScreen: ScreenView;
@@ -11,9 +10,6 @@ interface SkyHeaderProps {
   onOpenDepartments: () => void;
   isDepartmentConsoleOpen: boolean;
   onSignOut: () => void;
-  zoomScale?: number;
-  onResetZoom?: () => void;
-  onSetZoom?: (scale: number) => void;
   onOpenKeybindings?: () => void;
   currentSkin?: string;
   onToggleSkin?: () => void;
@@ -21,17 +17,7 @@ interface SkyHeaderProps {
   clients?: ClientRecord[];
   activeClientId?: string | null;
   onSelectClient?: (client: any) => void;
-  interactionMode?: CanvasInteractionMode;
-  onSetInteractionMode?: (mode: CanvasInteractionMode) => void;
-  showNonStructural?: boolean;
-  onToggleNonStructural?: () => void;
 }
-
-const routeButtonClass = (isActive: boolean): string => `flex items-center gap-1 rounded px-2 py-1 font-display text-[0.62rem] font-bold transition-all cursor-pointer ${
-  isActive
-    ? 'border border-alert-orange bg-alert-orange text-bg-obsidian'
-    : 'text-text-mana/75 hover:bg-accent-teal/40 hover:text-text-mana'
-}`;
 
 export const SkyHeader: React.FC<SkyHeaderProps> = ({
   currentScreen,
@@ -41,9 +27,6 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
   onOpenDepartments,
   isDepartmentConsoleOpen,
   onSignOut,
-  zoomScale = 1.0,
-  onResetZoom,
-  onSetZoom,
   onOpenKeybindings,
   currentSkin = 'heraldry-gold',
   onToggleSkin,
@@ -51,322 +34,283 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
   clients = [],
   activeClientId = null,
   onSelectClient,
-  interactionMode = 'drag',
-  onSetInteractionMode,
-  showNonStructural = true,
-  onToggleNonStructural,
 }) => {
-  const [isZoomPopoverOpen, setIsZoomPopoverOpen] = React.useState(false);
-  const zoomPopoverRef = React.useRef<HTMLDivElement>(null);
-
-  // Close zoom popover when clicking outside
-  React.useEffect(() => {
-    function handleClickOutside(event: MouseEvent) {
-      if (isZoomPopoverOpen && zoomPopoverRef.current && !zoomPopoverRef.current.contains(event.target as Node)) {
-        setIsZoomPopoverOpen(false);
-      }
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isOverflowOpen, setIsOverflowOpen] = useState(false);
+  const [isFocusedMode, setIsFocusedMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('szs_header_focus_mode') === 'true';
+    } catch {
+      return false;
     }
+  });
+  const [isHoveringTop, setIsHoveringTop] = useState(false);
+
+  const menuRef = useRef<HTMLDivElement>(null);
+  const overflowRef = useRef<HTMLDivElement>(null);
+
+  // Close popovers on click outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setIsMenuOpen(false);
+      }
+      if (overflowRef.current && !overflowRef.current.contains(e.target as Node)) {
+        setIsOverflowOpen(false);
+      }
+    };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [isZoomPopoverOpen]);
+  }, []);
 
-  // Dedicated Browser Popup Window Launcher for Display 2 (762x1366)
-  const handleSpawnCockpit = () => {
-    window.open('/cockpit', 'SZS_AvionicsCockpit', 'popup=yes,width=762,height=1366,left=1680,top=0,resizable=yes');
+  const toggleFocusMode = () => {
+    setIsFocusedMode((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem('szs_header_focus_mode', String(next));
+      } catch {}
+      return next;
+    });
   };
 
+  const handleSpawnCockpit = () => {
+    window.open('/cockpit', 'SZS_AvionicsCockpit', 'popup=yes,width=762,height=1366,left=1680,top=0,resizable=yes');
+    setIsOverflowOpen(false);
+  };
+
+  const views: { id: ScreenView; label: string; icon: string; hotkey: string }[] = [
+    { id: 'dashboard', label: '1. PIPELINE', icon: 'fa-diagram-project', hotkey: 'Alt+1' },
+    { id: 'osint', label: '2. OSINT', icon: 'fa-crosshairs', hotkey: 'Alt+2' },
+    { id: 'symphony', label: '3. SYMPHONY', icon: 'fa-wave-square', hotkey: 'Alt+3' },
+    { id: 'treasure', label: '4. TREASURE', icon: 'fa-coins', hotkey: 'Alt+4' },
+    { id: 'archive', label: '5. MAIL', icon: 'fa-envelope-open-text', hotkey: 'Alt+5' },
+  ];
+
+  const isHidden = isFocusedMode && !isHoveringTop;
+
   return (
-    <header className="relative z-20 flex flex-wrap items-center justify-between gap-3 border-b border-accent-teal/60 bg-bg-obsidian/95 px-4 py-2 shadow-md select-none">
-      <div className="flex items-center gap-3">
-        <button
-          className="h-8 rounded-md bg-alert-orange px-2 font-serif-display text-sm font-bold text-bg-obsidian transition-transform hover:scale-105 cursor-pointer"
-          onClick={() => onSelectScreen('dashboard')}
-          title="Session Zero Solutions home (Alt+1)"
-        >
-          SZS
-        </button>
-        <div>
-          <div className="font-display text-xs font-extrabold tracking-wide text-text-mana sm:text-sm">
-            Session Zero Solutions // Command HUD
-          </div>
-          <div className="font-mono text-[0.62rem] uppercase tracking-wide text-text-mana/65">
-            GOOGLE WORKSPACE CRM // CLIENT DELIVERY
-          </div>
-        </div>
-      </div>
+    <>
+      {/* Invisible Hover Sensor at top edge when Focus Mode is on */}
+      {isFocusedMode && (
+        <div
+          onMouseEnter={() => setIsHoveringTop(true)}
+          className="fixed top-0 left-0 right-0 h-2 z-[130] pointer-events-auto"
+        />
+      )}
 
-      <div className="flex flex-wrap items-center gap-2">
-        {/* Module 6: Solar Map Navigation Selector */}
-        {onSelectClient && (
-          <SolarMapSelector
-            clients={clients}
-            activeClientId={activeClientId}
-            onSelectClient={onSelectClient}
-          />
-        )}
-
-        {/* Tactical Ribbon Overhaul: Segmented Mode Controls & Non-Structural Filter */}
-        {onSetInteractionMode && onToggleNonStructural && (
-          <TacticalRibbonControls
-            mode={interactionMode}
-            onSetMode={onSetInteractionMode}
-            showNonStructural={showNonStructural}
-            onToggleNonStructural={onToggleNonStructural}
-          />
-        )}
-
-        {/* Navigation Switcher: 5 Top Department Tabs */}
-        <nav aria-label="Department canvases" className="flex items-center gap-1 rounded-lg border border-accent-teal/60 p-1">
+      <header
+        onMouseEnter={() => isFocusedMode && setIsHoveringTop(true)}
+        onMouseLeave={() => isFocusedMode && setIsHoveringTop(false)}
+        className={`relative z-20 h-[48px] shrink-0 border-b border-[#086375]/60 bg-[#020500]/95 px-3 flex items-center justify-between gap-2 shadow-md select-none transition-transform duration-200 ease-out font-mono text-xs ${
+          isHidden ? '-translate-y-full' : 'translate-y-0'
+        }`}
+      >
+        {/* ── LEFT: Logo + Title + Solar Map Selector ──────────────── */}
+        <div className="flex items-center gap-2.5 shrink-0">
           <button
             type="button"
+            className="h-7 px-2 rounded bg-[#FE5F00] font-serif-display text-xs font-bold text-[#020500] hover:scale-105 transition-transform cursor-pointer"
             onClick={() => onSelectScreen('dashboard')}
-            aria-pressed={currentScreen === 'dashboard'}
-            className={`${routeButtonClass(currentScreen === 'dashboard')} px-2 sm:px-2.5`}
-            title="1. Tactical Kanban Pipeline (Alt+1)"
+            title="Session Zero Solutions home (Alt+1)"
           >
-            <i className="fa-solid fa-diagram-project" />
-            <span>1. PIPELINE</span>
+            SZS
           </button>
-          <button
-            type="button"
-            onClick={() => onSelectScreen('osint')}
-            aria-pressed={currentScreen === 'osint'}
-            className={`${routeButtonClass(currentScreen === 'osint')} px-2 sm:px-2.5`}
-            title="2. Oracle's Spatial Intelligence Canvas & Competitive Radar (Alt+2)"
-          >
-            <i className="fa-solid fa-crosshairs text-accent-teal" />
-            <span>2. OSINT WAR ROOM</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onSelectScreen('symphony')}
-            aria-pressed={currentScreen === 'symphony'}
-            className={`${routeButtonClass(currentScreen === 'symphony')} px-2 sm:px-2.5`}
-            title="3. Dolores's Gantt Roadmap & Sprint Matrix (Alt+3)"
-          >
-            <i className="fa-solid fa-wave-square text-highlight-gold" />
-            <span>3. SYMPHONY</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onSelectScreen('treasure')}
-            aria-pressed={currentScreen === 'treasure'}
-            className={`${routeButtonClass(currentScreen === 'treasure')} px-2 sm:px-2.5`}
-            title="4. Vala's Milestone Billing & Fiscal Ledger (Alt+4)"
-          >
-            <i className="fa-solid fa-coins text-gold" />
-            <span>4. TREASURE</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onSelectScreen('archive')}
-            aria-pressed={currentScreen === 'archive'}
-            className={`${routeButtonClass(currentScreen === 'archive')} px-2 sm:px-2.5`}
-            title="5. Daisy's Mail Command Center (MCC), Broadcasts, Drips & Grand Archive (Alt+5)"
-          >
-            <i className="fa-solid fa-envelope-open-text text-highlight-gold" />
-            <span>5. MAIL COMMAND</span>
-          </button>
-        </nav>
+          <span className="font-display text-xs font-extrabold text-[#DDFBD0] tracking-wide hidden sm:inline">
+            Command HUD
+          </span>
 
-        {/* Directory, Overview, Actions navigation */}
-        <nav aria-label="HUD sections" className="flex items-center gap-0.5 rounded-lg border border-accent-teal/60 p-1">
-          <button type="button" onClick={() => onSelectScreen('pipeline')} className={routeButtonClass(currentScreen === 'pipeline')} title="Pipeline summary">
-            OVERVIEW
-          </button>
-          <button type="button" onClick={() => onSelectScreen('clients')} className={routeButtonClass(currentScreen === 'clients')} title="Client directory (Alt+6)">
-            DIRECTORY
-          </button>
-          <button type="button" onClick={() => onSelectScreen('actions')} className={routeButtonClass(currentScreen === 'actions')} title="Workspace shortcuts (Alt+7)">
-            ACTIONS
-          </button>
-        </nav>
-
-        {/* Departments Drawer Button */}
-        <button
-          type="button"
-          onClick={onOpenDepartments}
-          aria-expanded={isDepartmentConsoleOpen}
-          aria-controls="department-console"
-          className={`${routeButtonClass(isDepartmentConsoleOpen)} border border-accent-teal/60 px-3`}
-          title="Open department consoles over the tactical canvas"
-        >
-          <i className="fa-solid fa-layer-group" />
-          <span>DEPARTMENTS</span>
-        </button>
-
-        {/* Tactical Zoom Popover Control */}
-        <div className="relative" ref={zoomPopoverRef}>
-          <button
-            type="button"
-            onClick={() => setIsZoomPopoverOpen((prev) => !prev)}
-            aria-expanded={isZoomPopoverOpen}
-            className={`flex items-center gap-1.5 rounded border px-2.5 py-1 font-mono text-[0.61rem] transition-all cursor-pointer ${
-              isZoomPopoverOpen
-                ? 'border-highlight-gold bg-primary-plum text-highlight-gold shadow-[0_0_10px_rgba(224,202,60,0.3)]'
-                : 'border-accent-teal/60 bg-primary-plum/30 text-text-mana/80 hover:border-highlight-gold hover:text-highlight-gold'
-            }`}
-            title="Tactical Scale & Canvas Zoom - Click for Range Slider & Presets (or Alt + Scroll Wheel on Canvas)"
-          >
-            <i className="fa-solid fa-magnifying-glass text-[0.55rem] text-highlight-gold" />
-            <span className="font-bold">{Math.round(zoomScale * 100)}%</span>
-            <i className={`fa-solid fa-chevron-down text-[0.5rem] transition-transform ${isZoomPopoverOpen ? 'rotate-180' : ''}`} />
-          </button>
-
-          {isZoomPopoverOpen && (
-            <div className="absolute right-0 top-full mt-2 w-64 rounded-xl border border-accent-teal/80 bg-bg-obsidian/98 p-3.5 shadow-[0_12px_32px_rgba(0,0,0,0.9),0_0_15px_rgba(8,99,117,0.5)] backdrop-blur-md z-50 animate-in fade-in slide-in-from-top-1 duration-150">
-              <div className="flex items-center justify-between text-[11px] font-mono text-text-mana mb-2 border-b border-accent-teal/40 pb-1.5">
-                <span className="font-bold tracking-wider uppercase text-[0.65rem]">Tactical Scale</span>
-                <span className="text-highlight-gold font-bold text-xs">{Math.round(zoomScale * 100)}%</span>
-              </div>
-
-              {/* Range Slider - Wires directly to onSetZoom */}
-              <div className="mb-3">
-                <input
-                  type="range"
-                  min="10"
-                  max="160"
-                  step="5"
-                  value={Math.round(zoomScale * 100)}
-                  onChange={(e) => onSetZoom?.(Number(e.target.value) / 100)}
-                  className="w-full accent-highlight-gold cursor-pointer h-1.5 bg-accent-teal/30 rounded-lg appearance-none"
-                />
-                <div className="flex justify-between text-[9px] font-mono text-text-mana/50 mt-1">
-                  <span>10% (Ultra-Wide)</span>
-                  <span>100% (Default)</span>
-                  <span>160% (Focus)</span>
-                </div>
-              </div>
-
-              {/* Quick Presets */}
-              <div className="grid grid-cols-4 gap-1.5 text-[10px] font-mono mb-2.5">
-                <button
-                  type="button"
-                  onClick={() => onSetZoom?.(0.10)}
-                  className="px-1.5 py-1 rounded border border-accent-teal/60 bg-accent-teal/15 text-text-mana hover:border-accent-teal hover:bg-accent-teal/30 transition-colors cursor-pointer text-center"
-                >
-                  10%
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onSetZoom?.(0.40)}
-                  className="px-1.5 py-1 rounded border border-accent-teal/60 bg-accent-teal/15 text-text-mana hover:border-accent-teal hover:bg-accent-teal/30 transition-colors cursor-pointer text-center"
-                >
-                  40%
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (onResetZoom) onResetZoom();
-                    else onSetZoom?.(1.0);
-                  }}
-                  className="px-1.5 py-1 rounded border border-highlight-gold/60 bg-highlight-gold/20 text-highlight-gold font-bold hover:bg-highlight-gold/30 transition-colors cursor-pointer text-center"
-                >
-                  100%
-                </button>
-                <button
-                  type="button"
-                  onClick={() => onSetZoom?.(1.40)}
-                  className="px-1.5 py-1 rounded border border-accent-teal/60 bg-accent-teal/15 text-text-mana hover:border-accent-teal hover:bg-accent-teal/30 transition-colors cursor-pointer text-center"
-                >
-                  140%
-                </button>
-              </div>
-
-              <div className="border-t border-accent-teal/40 pt-2 flex items-center justify-between text-[9px] font-mono text-text-mana/60">
-                <span>Hotkey: Alt + Wheel</span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    onResetZoom?.();
-                    setIsZoomPopoverOpen(false);
-                  }}
-                  className="text-highlight-gold underline hover:text-alert-orange cursor-pointer"
-                >
-                  Reset Pan & Zoom
-                </button>
-              </div>
-            </div>
+          {/* Solar Map Client Selector */}
+          {onSelectClient && (
+            <SolarMapSelector
+              clients={clients}
+              activeClientId={activeClientId}
+              onSelectClient={onSelectClient}
+            />
           )}
         </div>
 
-        {/* Chassis Skin Toggle */}
-        {onToggleSkin && (
+        {/* ── CENTER: 5 Views Segmented Nav ───────────────────────── */}
+        <nav aria-label="Primary canvases" className="flex items-center gap-0.5 rounded-lg border border-[#086375]/50 p-0.5 bg-[#040706]">
+          {views.map((v) => {
+            const isActive = currentScreen === v.id;
+            return (
+              <button
+                key={v.id}
+                type="button"
+                onClick={() => onSelectScreen(v.id)}
+                aria-pressed={isActive}
+                title={`${v.label} (${v.hotkey})`}
+                className={`flex items-center gap-1.5 px-2 py-1 rounded text-[0.62rem] font-bold transition-all cursor-pointer ${
+                  isActive
+                    ? 'bg-[#FE5F00] text-black shadow-[0_0_10px_rgba(254,95,0,0.4)]'
+                    : 'text-[#DDFBD0]/70 hover:bg-[#086375]/40 hover:text-[#DDFBD0]'
+                }`}
+              >
+                <i className={`fa-solid ${v.icon} text-[0.6rem]`} />
+                <span className="hidden xl:inline">{v.label}</span>
+              </button>
+            );
+          })}
+        </nav>
+
+        {/* ── RIGHT: Urgent Alert + Menu Dropdown + Overflow ────────── */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {/* Urgent Alert Badge */}
+          {telemetry && telemetry.missingDeposits > 0 && (
+            <button
+              type="button"
+              onClick={() => onSelectScreen('dashboard')}
+              className="flex items-center gap-1 px-2 py-1 rounded border border-[#FE5F00] bg-[#FE5F00]/20 text-[#FE5F00] text-[0.6rem] font-bold animate-pulse cursor-pointer"
+              title={`${telemetry.missingDeposits} Client(s) missing upfront deposit`}
+            >
+              <i className="fa-solid fa-triangle-exclamation text-[0.55rem]" />
+              <span>DEP DUE: {telemetry.missingDeposits}</span>
+            </button>
+          )}
+
+          {/* Menu Dropdown (Overview, Directory, Actions, Departments) */}
+          <div className="relative" ref={menuRef}>
+            <button
+              type="button"
+              onClick={() => setIsMenuOpen((prev) => !prev)}
+              aria-expanded={isMenuOpen}
+              className={`flex items-center gap-1 px-2 py-1 rounded border text-[0.62rem] font-bold transition-all cursor-pointer ${
+                isMenuOpen || isDepartmentConsoleOpen
+                  ? 'border-[#E0CA3C] bg-[#E0CA3C]/20 text-[#E0CA3C]'
+                  : 'border-[#086375]/60 bg-[#086375]/15 text-[#DDFBD0]/80 hover:border-[#E0CA3C]'
+              }`}
+            >
+              <i className="fa-solid fa-bars text-[0.55rem]" />
+              <span>MENU</span>
+              <i className={`fa-solid fa-chevron-down text-[0.5rem] transition-transform ${isMenuOpen ? 'rotate-180' : ''}`} />
+            </button>
+
+            {isMenuOpen && (
+              <div className="absolute right-0 top-full mt-1.5 w-44 rounded-xl border border-[#086375] bg-[#020500]/98 p-1.5 shadow-[0_12px_32px_rgba(0,0,0,0.9)] backdrop-blur-md z-50">
+                <button
+                  type="button"
+                  onClick={() => { onSelectScreen('pipeline'); setIsMenuOpen(false); }}
+                  className="w-full text-left px-2.5 py-1.5 rounded hover:bg-[#086375]/30 text-[#DDFBD0] flex items-center justify-between cursor-pointer"
+                >
+                  <span>Pipeline Overview</span>
+                  <span className="text-[0.55rem] text-[#DDFBD0]/50">Alt+1</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { onSelectScreen('clients'); setIsMenuOpen(false); }}
+                  className="w-full text-left px-2.5 py-1.5 rounded hover:bg-[#086375]/30 text-[#DDFBD0] flex items-center justify-between cursor-pointer"
+                >
+                  <span>Client Directory</span>
+                  <span className="text-[0.55rem] text-[#DDFBD0]/50">Alt+6</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => { onSelectScreen('actions'); setIsMenuOpen(false); }}
+                  className="w-full text-left px-2.5 py-1.5 rounded hover:bg-[#086375]/30 text-[#DDFBD0] flex items-center justify-between cursor-pointer"
+                >
+                  <span>Macro Matrix Actions</span>
+                  <span className="text-[0.55rem] text-[#DDFBD0]/50">Alt+7</span>
+                </button>
+                <div className="border-t border-[#086375]/40 my-1" />
+                <button
+                  type="button"
+                  onClick={() => { onOpenDepartments(); setIsMenuOpen(false); }}
+                  className={`w-full text-left px-2.5 py-1.5 rounded flex items-center justify-between cursor-pointer ${
+                    isDepartmentConsoleOpen ? 'bg-[#E0CA3C]/20 text-[#E0CA3C] font-bold' : 'hover:bg-[#086375]/30 text-[#DDFBD0]'
+                  }`}
+                >
+                  <span>Departments Console</span>
+                  <i className="fa-solid fa-layer-group text-[0.55rem]" />
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Quick Command Palette Trigger (Ctrl+K) */}
           <button
             type="button"
-            onClick={onToggleSkin}
-            className="flex items-center gap-1 rounded border border-accent-teal/60 bg-primary-plum/30 px-2 py-1 font-mono text-[0.61rem] text-text-mana/80 hover:border-highlight-gold hover:text-highlight-gold transition-colors cursor-pointer"
-            title={`Chassis Skin: ${currentSkin === 'heraldry-gold' ? 'Heraldry Gold' : 'Stealth Obsidian'} - Click to toggle`}
+            onClick={() => onSelectScreen('actions')}
+            className="flex items-center gap-1 px-2 py-1 rounded border border-[#086375]/60 bg-[#086375]/10 text-[#DDFBD0]/70 hover:border-[#E0CA3C] hover:text-[#E0CA3C] text-[0.62rem] transition-all cursor-pointer"
+            title="Command Palette & Quick Actions (Ctrl+K)"
           >
-            <i className={`fa-solid ${currentSkin === 'heraldry-gold' ? 'fa-shield-halved text-highlight-gold' : 'fa-ghost text-accent-teal'}`} />
-            <span className="uppercase">{currentSkin === 'heraldry-gold' ? 'GOLD' : 'STEALTH'}</span>
+            <i className="fa-solid fa-magnifying-glass text-[0.55rem]" />
+            <kbd className="text-[0.55rem] px-1 rounded bg-[#020500] border border-[#086375]">⌘K</kbd>
           </button>
-        )}
 
-        {/* Display 2: Spawn Cockpit Pop-Out Toggle */}
-        <button
-          type="button"
-          onClick={handleSpawnCockpit}
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded border border-[#E0CA3C] bg-[#E0CA3C]/10 text-[#E0CA3C] hover:bg-[#E0CA3C] hover:text-black transition-all font-mono text-xs font-bold shadow-[0_0_10px_rgba(224,202,60,0.2)] cursor-pointer"
-          title="Open Avionics Cockpit UI on Secondary Monitor (762x1366)"
-        >
-          <i className="fa-solid fa-arrow-up-right-from-square text-[0.6rem]" />
-          <span>SPAWN COCKPIT [762×1366]</span>
-        </button>
-
-        {/* Module 5: Single Unified Settings Gear Button */}
-        {onOpenKeybindings && (
+          {/* Focus Mode Pin/Unpin Toggle */}
           <button
             type="button"
-            onClick={onOpenKeybindings}
-            className="flex items-center gap-1.5 rounded border border-[#E0CA3C]/60 bg-[#E0CA3C]/10 px-2.5 py-1 font-mono text-[0.61rem] text-[#E0CA3C] hover:bg-[#E0CA3C] hover:text-black transition-all cursor-pointer font-bold shadow-[0_0_8px_rgba(224,202,60,0.2)]"
-            title="Unified System Settings & Ergonomics Engine"
+            onClick={toggleFocusMode}
+            className={`p-1.5 rounded border text-[0.6rem] transition-colors cursor-pointer ${
+              isFocusedMode
+                ? 'border-[#E0CA3C] bg-[#E0CA3C]/20 text-[#E0CA3C]'
+                : 'border-[#086375]/60 text-[#DDFBD0]/60 hover:text-[#DDFBD0]'
+            }`}
+            title={isFocusedMode ? 'Unpin Header Auto-Hide (Focus Mode Active)' : 'Pin Header / Toggle Auto-Hide Focus Mode'}
           >
-            <i className="fa-solid fa-gear text-[0.65rem]" />
-            <span>SETTINGS</span>
+            <i className={`fa-solid ${isFocusedMode ? 'fa-thumbtack -rotate-45 text-[#E0CA3C]' : 'fa-thumbtack'}`} />
           </button>
-        )}
 
-        <button
-          type="button"
-          onClick={onSignOut}
-          className="rounded border border-accent-teal/60 px-2 py-1 font-mono text-[0.61rem] text-text-mana/70 hover:border-alert-orange hover:text-alert-orange cursor-pointer"
-          title="Clear the in-memory Google token and HUD data"
-        >
-          SIGN OUT
-        </button>
-      </div>
+          {/* Overflow Menu (...) */}
+          <div className="relative" ref={overflowRef}>
+            <button
+              type="button"
+              onClick={() => setIsOverflowOpen((prev) => !prev)}
+              aria-expanded={isOverflowOpen}
+              className="p-1.5 rounded border border-[#086375]/60 bg-[#086375]/10 text-[#DDFBD0]/70 hover:border-[#E0CA3C] hover:text-[#E0CA3C] text-[0.65rem] transition-colors cursor-pointer"
+              title="More options & Settings"
+            >
+              <i className="fa-solid fa-ellipsis-vertical" />
+            </button>
 
-      {/* Persistent Telemetry Ribbon Indicators */}
-      <div className="flex flex-wrap items-center justify-end gap-1.5 font-mono text-[0.61rem]">
-        <div className="flex items-center gap-1.5 rounded border border-accent-teal bg-primary-plum/45 px-2 py-1 text-gold" title="Total contract value of active clients">
-          <i className="fa-solid fa-chart-line text-accent-teal" />
-          <span>PIPELINE: ${telemetry ? (telemetry.pipelineMrr ?? 0).toLocaleString() : '0'}</span>
+            {isOverflowOpen && (
+              <div className="absolute right-0 top-full mt-1.5 w-52 rounded-xl border border-[#086375] bg-[#020500]/98 p-1.5 shadow-[0_12px_32px_rgba(0,0,0,0.9)] backdrop-blur-md z-50">
+                {onToggleSkin && (
+                  <button
+                    type="button"
+                    onClick={() => { onToggleSkin(); setIsOverflowOpen(false); }}
+                    className="w-full text-left px-2.5 py-1.5 rounded hover:bg-[#086375]/30 text-[#DDFBD0] flex items-center justify-between cursor-pointer"
+                  >
+                    <span>Skin: {currentSkin === 'heraldry-gold' ? 'Gold' : 'Stealth'}</span>
+                    <i className={`fa-solid ${currentSkin === 'heraldry-gold' ? 'fa-shield-halved text-[#E0CA3C]' : 'fa-ghost text-[#086375]'}`} />
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleSpawnCockpit}
+                  className="w-full text-left px-2.5 py-1.5 rounded hover:bg-[#086375]/30 text-[#E0CA3C] flex items-center justify-between cursor-pointer"
+                >
+                  <span>Spawn Cockpit [762×1366]</span>
+                  <i className="fa-solid fa-arrow-up-right-from-square text-[0.55rem]" />
+                </button>
+
+                {onOpenKeybindings && (
+                  <button
+                    type="button"
+                    onClick={() => { onOpenKeybindings(); setIsOverflowOpen(false); }}
+                    className="w-full text-left px-2.5 py-1.5 rounded hover:bg-[#086375]/30 text-[#DDFBD0] flex items-center justify-between cursor-pointer"
+                  >
+                    <span>Settings & Keymap</span>
+                    <i className="fa-solid fa-gear text-[0.55rem]" />
+                  </button>
+                )}
+
+                <div className="border-t border-[#086375]/40 my-1" />
+
+                <button
+                  type="button"
+                  onClick={() => { onSignOut(); setIsOverflowOpen(false); }}
+                  className="w-full text-left px-2.5 py-1.5 rounded hover:bg-[#FE5F00]/20 text-[#FE5F00] flex items-center justify-between cursor-pointer font-bold"
+                >
+                  <span>Sign Out</span>
+                  <i className="fa-solid fa-right-from-bracket text-[0.55rem]" />
+                </button>
+              </div>
+            )}
+          </div>
         </div>
-        <div className="flex items-center gap-1.5 rounded border border-accent-teal bg-primary-plum/45 px-2 py-1 text-text-mana" title="Clients in building or testing stages">
-          <i className="fa-solid fa-layer-group text-accent-teal" />
-          <span>SPRINTS: {telemetry ? telemetry.activeSprints : 0}</span>
-        </div>
-        <div
-          className={`flex items-center gap-1.5 rounded border px-2 py-1 ${
-            telemetry && telemetry.missingDeposits > 0
-              ? 'border-alert-orange bg-primary-plum/70 text-alert-orange'
-              : 'border-accent-teal bg-primary-plum/45 text-text-mana/70'
-          }`}
-          title="Clients in Session Zero missing upfront deposit"
-        >
-          <i className="fa-solid fa-triangle-exclamation" />
-          <span>DEP DUE: {telemetry ? telemetry.missingDeposits : 0}</span>
-        </div>
-        <div className="flex items-center gap-1.5 rounded border border-accent-teal bg-primary-plum/45 px-2 py-1 text-text-mana/70">
-          <i className="fa-solid fa-signal text-accent-teal" />
-          <span>GA4: 14 LIVE</span>
-        </div>
-        <div className="flex items-center gap-1.5 rounded border border-accent-teal bg-primary-plum/45 px-2 py-1 text-text-mana/70">
-          <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-          <span>POLICE ENGINE NOMINAL</span>
-        </div>
-      </div>
-    </header>
+      </header>
+    </>
   );
 };
