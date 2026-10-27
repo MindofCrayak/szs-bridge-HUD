@@ -30,6 +30,14 @@ export const ResizableNodeContainer: React.FC<Props> = ({
 
   // 1. Drag Positioning Handler
   const handleDragStart = (e: React.PointerEvent) => {
+    // Also allow Alt + Right Click to open menu directly on click
+    if (e.altKey && (e.button === 2 || e.button === 0)) {
+      e.preventDefault();
+      e.stopPropagation();
+      setContextMenu({ x: e.clientX, y: e.clientY });
+      return;
+    }
+
     if (node.isLocked || e.button !== 0) return;
     e.stopPropagation();
     const startX = e.clientX;
@@ -82,7 +90,7 @@ export const ResizableNodeContainer: React.FC<Props> = ({
     window.addEventListener('pointerup', onPointerUp);
   };
 
-  // 3. Right-Click Context Menu for Lock/Unlock
+  // 3. Right-Click & Alt + Right-Click Context Menu for Lock/Unlock
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -93,6 +101,13 @@ export const ResizableNodeContainer: React.FC<Props> = ({
     <>
       <div
         onContextMenu={handleContextMenu}
+        onClick={(e) => {
+          if (e.altKey) {
+            e.preventDefault();
+            e.stopPropagation();
+            setContextMenu({ x: e.clientX, y: e.clientY });
+          }
+        }}
         style={{
           transform: `translate3d(${node.x}px, ${node.y}px, 0)`,
           width: `${node.width}px`,
@@ -101,7 +116,7 @@ export const ResizableNodeContainer: React.FC<Props> = ({
           top: 0,
           left: 0,
         }}
-        className={`group flex flex-col rounded-xl border bg-[#020500]/95 backdrop-blur-md transition-shadow select-none z-20 ${
+        className={`group flex flex-col rounded-xl border bg-[#020500]/95 backdrop-blur-md transition-shadow select-none z-20 pointer-events-auto ${
           node.isLocked
             ? 'border-[#086375]/40 shadow-none'
             : 'border-[#086375] hover:border-[#E0CA3C] shadow-[0_0_20px_rgba(8,99,117,0.2)]'

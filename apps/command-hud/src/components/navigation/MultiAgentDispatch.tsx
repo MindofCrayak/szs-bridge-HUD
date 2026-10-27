@@ -366,9 +366,13 @@ export const MultiAgentDispatch: React.FC<MultiAgentDispatchProps> = ({
                             {section.services.map((service) => (
                               <div
                                 key={service.id}
-                                draggable
+                                draggable="true"
                                 onDragStart={(e) => handleServiceDragStart(e, service)}
-                                className="group flex items-center gap-2 p-2 rounded-lg border border-[#086375]/50 bg-[#0d1513]/70 cursor-grab hover:ring-2 hover:ring-[#E0CA3C] hover:border-[#E0CA3C]/60 hover:bg-[#E0CA3C]/5 transition-all active:cursor-grabbing active:ring-[#FE5F00] active:scale-[0.97] select-none w-full box-border"
+                                className="group flex items-center gap-2 p-2 rounded-lg border border-[#086375]/50 bg-[#0d1513]/70 cursor-grab hover:ring-2 hover:ring-[#E0CA3C] hover:border-[#E0CA3C]/60 hover:bg-[#E0CA3C]/5 transition-all active:cursor-grabbing active:ring-[#FE5F00] active:scale-[0.97] w-full box-border"
+                                style={{
+                                  userSelect: 'auto',
+                                  WebkitUserDrag: 'element',
+                                }}
                                 title={`Drag "${service.name}" onto the Solar Workbench to snap it to orbit`}
                               >
                                 {/* Grip Handle */}

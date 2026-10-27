@@ -4,6 +4,7 @@ import { ServiceDragger } from './ServiceDragger';
 import { SERVICE_REGISTRY } from '../../data/serviceRegistry';
 import { ResizableNodeContainer, NodeGeometry } from './workbench/ResizableNodeContainer';
 import { syncServiceToMasterControl } from '../../data/api';
+import { DropConfirmDialog } from './workbench/DropConfirmDialog';
 
 interface ProjectWorkbenchViewProps {
   client: ClientRecord;
@@ -31,6 +32,16 @@ interface Edge {
   id: string;
   sourceId: string;
   targetId: string;
+}
+
+interface PendingDropState {
+  serviceId: string;
+  name: string;
+  price: number;
+  tasksToInject: string[];
+  targetClientId: string;
+  snapX: number;
+  snapY: number;
 }
 
 export const ProjectWorkbenchView: React.FC<ProjectWorkbenchViewProps> = ({
@@ -64,6 +75,7 @@ export const ProjectWorkbenchView: React.FC<ProjectWorkbenchViewProps> = ({
   ]);
 
   const [isDropActive, setIsDropActive] = useState(false);
+  const [pendingDrop, setPendingDrop] = useState<PendingDropState | null>(null);
 
   // Core node geometry representation for edge calculations
   const coreNodeGeometry: NodeGeometry = {
@@ -83,7 +95,7 @@ export const ProjectWorkbenchView: React.FC<ProjectWorkbenchViewProps> = ({
   /**
    * MODULE 2: WORKBENCH ORBIT SNAP & DROP TARGET ENGINE
    */
-  const handleCanvasDrop = async (e: React.DragEvent) => {
+  const handleCanvasDrop = (e: React.DragEvent) => {
     e.preventDefault();
     setIsDropActive(false);
 
@@ -134,6 +146,25 @@ export const ProjectWorkbenchView: React.FC<ProjectWorkbenchViewProps> = ({
     const snapX = Math.round(Math.cos(angle) * distance - 90);
     const snapY = Math.round(Math.sin(angle) * distance - 45);
 
+    // Staged Confirmation for Financial Drop (Brief Rule 3 & Milestone 0)
+    setPendingDrop({
+      serviceId,
+      name: name || serviceId,
+      price,
+      tasksToInject,
+      targetClientId,
+      snapX,
+      snapY,
+    });
+  };
+
+  /**
+   * Confirms and persists the staged financial drop mutation
+   */
+  const handleConfirmDrop = async () => {
+    if (!pendingDrop) return;
+    const { serviceId, name, price, tasksToInject, targetClientId, snapX, snapY } = pendingDrop;
+
     // Optimistic UI Update
     const updatedComponents = [...(client.activeComponents || []), serviceId];
     const updatedContractValue = Number(client.ContractValue || 0) + Number(price);
@@ -152,7 +183,7 @@ export const ProjectWorkbenchView: React.FC<ProjectWorkbenchViewProps> = ({
       {
         id: newNodeId,
         serviceId,
-        title: name || serviceId,
+        title: name,
         x: snapX,
         y: snapY,
         width: 200,
@@ -170,6 +201,8 @@ export const ProjectWorkbenchView: React.FC<ProjectWorkbenchViewProps> = ({
         targetId: newNodeId,
       },
     ]);
+
+    setPendingDrop(null);
 
     // Authoritative Master Control Sync (Module 3)
     try {
@@ -333,8 +366,6 @@ export const ProjectWorkbenchView: React.FC<ProjectWorkbenchViewProps> = ({
             if (!src || !dst) return null;
 
             // Offset relative to screen center (50%, 50%)
-            // Both src and dst are positioned relative to the center origin
-            // Convert to SVG coordinates using center-anchor
             const cx = window.innerWidth / 2;
             const cy = window.innerHeight / 2;
 
@@ -359,236 +390,238 @@ export const ProjectWorkbenchView: React.FC<ProjectWorkbenchViewProps> = ({
           })}
         </svg>
 
-        {/* ── CENTER WORKSPACE ORIGIN CONTAINER ─────────────────────── */}
-        <div className="absolute top-1/2 left-1/2 w-0 h-0 overflow-visible">
-          {/* ── CENTRAL CORE SUN NODE ─────────────────────────────────── */}
-          <div
-            style={{
-              position: 'absolute',
-              top: `${coreNodeGeometry.y}px`,
-              left: `${coreNodeGeometry.x}px`,
-              width: `${coreNodeGeometry.width}px`,
-              height: `${coreNodeGeometry.height}px`,
-            }}
-            className="z-20 rounded-2xl border-2 border-[#E0CA3C] bg-gradient-to-br from-[#0d1f18] via-[#05130e] to-[#020500] p-5 shadow-[0_0_50px_rgba(224,202,60,0.35)] flex flex-col select-none"
-          >
-            {/* Core Header */}
-            <div className="flex items-center justify-between border-b border-[#086375]/60 pb-3 mb-3">
-              <div>
-                <span className="text-[0.62rem] text-[#086375] font-bold uppercase tracking-wider block">
-                  CORE DELIVERABLE NODE // {client.ClientID}
-                </span>
-                <h2 className="font-display font-extrabold text-lg text-white tracking-wide">
-                  {client.Company_Name}
-                </h2>
+        {/* ── FULL INTERACTION PLANE (Covers hit area without 0x0 restriction) ─────────────── */}
+        <div className="absolute inset-0 pointer-events-none overflow-visible flex items-center justify-center">
+          <div className="relative w-0 h-0 overflow-visible pointer-events-none">
+            {/* ── CENTRAL CORE SUN NODE ─────────────────────────────────── */}
+            <div
+              style={{
+                position: 'absolute',
+                top: `${coreNodeGeometry.y}px`,
+                left: `${coreNodeGeometry.x}px`,
+                width: `${coreNodeGeometry.width}px`,
+                height: `${coreNodeGeometry.height}px`,
+              }}
+              className="z-20 pointer-events-auto rounded-2xl border-2 border-[#E0CA3C] bg-gradient-to-br from-[#0d1f18] via-[#05130e] to-[#020500] p-5 shadow-[0_0_50px_rgba(224,202,60,0.35)] flex flex-col select-none"
+            >
+              {/* Core Header */}
+              <div className="flex items-center justify-between border-b border-[#086375]/60 pb-3 mb-3">
+                <div>
+                  <span className="text-[0.62rem] text-[#086375] font-bold uppercase tracking-wider block">
+                    CORE DELIVERABLE NODE // {client.ClientID}
+                  </span>
+                  <h2 className="font-display font-extrabold text-lg text-white tracking-wide">
+                    {client.Company_Name}
+                  </h2>
+                </div>
+                <div className="text-right">
+                  <span className="text-[0.6rem] text-[#DDFBD0]/60 block uppercase">Contract Value</span>
+                  <span className="font-bold text-sm text-[#E0CA3C]">
+                    ${(client.ContractValue || 0).toLocaleString()}
+                  </span>
+                </div>
               </div>
-              <div className="text-right">
-                <span className="text-[0.6rem] text-[#DDFBD0]/60 block uppercase">Contract Value</span>
-                <span className="font-bold text-sm text-[#E0CA3C]">
-                  ${(client.ContractValue || 0).toLocaleString()}
+
+              {/* 10-Step SprintStage Progress Track */}
+              <div className="mb-4">
+                <div className="flex justify-between items-center text-[0.62rem] mb-1.5">
+                  <span className="font-bold text-[#E0CA3C]">10-STEP SPRINT STAGE PROGRESS</span>
+                  <span className="text-[#DDFBD0]/70">Step {stageIndex + 1} of 10</span>
+                </div>
+                <div className="flex gap-1 h-2 mb-1">
+                  {SPRINT_STAGES_LIST.map((stage, idx) => {
+                    const isPassed = idx <= stageIndex;
+                    const isCurrent = idx === stageIndex;
+                    return (
+                      <div
+                        key={stage}
+                        title={stage}
+                        className={`flex-1 rounded-xs transition-all ${
+                          isCurrent
+                            ? 'bg-[#E0CA3C] shadow-[0_0_8px_#E0CA3C] animate-pulse'
+                            : isPassed
+                            ? 'bg-[#086375]'
+                            : 'bg-[#086375]/20'
+                        }`}
+                      />
+                    );
+                  })}
+                </div>
+                <div className="text-[0.65rem] text-[#E0CA3C] font-bold truncate">
+                  {currentStage}
+                </div>
+              </div>
+
+              {/* Roadblock and Vitals */}
+              <div className="grid grid-cols-2 gap-2 text-[0.65rem] bg-[#020500]/70 border border-[#086375]/40 rounded-xl p-2.5 mb-3">
+                <div>
+                  <span className="text-[#DDFBD0]/50 block text-[0.58rem] uppercase">Iron Gate Deposit</span>
+                  <span className={`font-bold ${client.DepositPaid ? 'text-[#E0CA3C]' : 'text-[#FE5F00]'}`}>
+                    {client.DepositPaid ? '1/3 CLEARED 🔓' : 'UNPAID / LOCKED 🔒'}
+                  </span>
+                </div>
+                <div>
+                  <span className="text-[#DDFBD0]/50 block text-[0.58rem] uppercase">Active Roadblock</span>
+                  <span className="text-[#FE5F00] font-bold truncate block">
+                    {client.roadblock || client.activePebble || 'None Reported'}
+                  </span>
+                </div>
+              </div>
+
+              {/* Active ECS Components Count */}
+              <div className="flex items-center justify-between text-[0.62rem] text-[#DDFBD0]/70 border-t border-[#086375]/40 pt-2">
+                <span>Installed ECS Components:</span>
+                <span className="font-bold text-[#E0CA3C]">
+                  {client.activeComponents?.length || 0} Modules Active
                 </span>
               </div>
             </div>
 
-            {/* 10-Step SprintStage Progress Track */}
-            <div className="mb-4">
-              <div className="flex justify-between items-center text-[0.62rem] mb-1.5">
-                <span className="font-bold text-[#E0CA3C]">10-STEP SPRINT STAGE PROGRESS</span>
-                <span className="text-[#DDFBD0]/70">Step {stageIndex + 1} of 10</span>
-              </div>
-              <div className="flex gap-1 h-2 mb-1">
-                {SPRINT_STAGES_LIST.map((stage, idx) => {
-                  const isPassed = idx <= stageIndex;
-                  const isCurrent = idx === stageIndex;
-                  return (
-                    <div
-                      key={stage}
-                      title={stage}
-                      className={`flex-1 rounded-xs transition-all ${
-                        isCurrent
-                          ? 'bg-[#E0CA3C] shadow-[0_0_8px_#E0CA3C] animate-pulse'
-                          : isPassed
-                          ? 'bg-[#086375]'
-                          : 'bg-[#086375]/20'
-                      }`}
-                    />
-                  );
-                })}
-              </div>
-              <div className="text-[0.65rem] text-[#E0CA3C] font-bold truncate">
-                {currentStage}
-              </div>
-            </div>
+            {/* ── MODULE 5: UNIVERSAL RESIZABLE SATELLITE NODES ──────────── */}
+            {activeTab === 'SATELLITES' && (
+              <>
+                {nodes.map((node) => (
+                  <ResizableNodeContainer
+                    key={node.id}
+                    node={node}
+                    cameraZoom={cameraZoom}
+                    onUpdate={handleUpdateNode}
+                  >
+                    {/* Node Specific Contents */}
+                    {node.id === 'node-pamela' && (
+                      <div className="space-y-1 text-[0.6rem] text-[#DDFBD0]/80">
+                        <div className="flex items-center gap-1.5 mb-1 text-[#086375] font-bold text-[0.65rem]">
+                          <i className="fa-solid fa-flask text-emerald-400" />
+                          <span>LEGAL & DRIVE VAULT</span>
+                        </div>
+                        <a
+                          href={client.DriveFolderUrl || '#'}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="flex items-center justify-between p-1 rounded bg-[#086375]/15 hover:bg-[#086375]/30 cursor-pointer text-[#DDFBD0]"
+                        >
+                          <span>Google Drive Vault</span>
+                          <i className="fa-solid fa-arrow-up-right-from-square text-[0.5rem] text-[#E0CA3C]" />
+                        </a>
+                        <div className="flex items-center justify-between p-1 rounded bg-[#086375]/15">
+                          <span>MSA: {client.MSA_DocID ? 'Signed 🔓' : 'Missing 🔒'}</span>
+                        </div>
+                      </div>
+                    )}
 
-            {/* Roadblock and Vitals */}
-            <div className="grid grid-cols-2 gap-2 text-[0.65rem] bg-[#020500]/70 border border-[#086375]/40 rounded-xl p-2.5 mb-3">
-              <div>
-                <span className="text-[#DDFBD0]/50 block text-[0.58rem] uppercase">Iron Gate Deposit</span>
-                <span className={`font-bold ${client.DepositPaid ? 'text-[#E0CA3C]' : 'text-[#FE5F00]'}`}>
-                  {client.DepositPaid ? '1/3 CLEARED 🔓' : 'UNPAID / LOCKED 🔒'}
-                </span>
-              </div>
-              <div>
-                <span className="text-[#DDFBD0]/50 block text-[0.58rem] uppercase">Active Roadblock</span>
-                <span className="text-[#FE5F00] font-bold truncate block">
-                  {client.roadblock || client.activePebble || 'None Reported'}
-                </span>
-              </div>
-            </div>
+                    {node.id === 'node-oracle' && (
+                      <div className="space-y-1 text-[0.6rem] text-[#DDFBD0]/80">
+                        <div className="flex items-center gap-1.5 mb-1 text-[#E0CA3C] font-bold text-[0.65rem]">
+                          <i className="fa-solid fa-eye text-[#E0CA3C]" />
+                          <span>INTELLIGENCE & OSINT</span>
+                        </div>
+                        <div className="p-1 rounded bg-[#086375]/15 flex justify-between">
+                          <span>case_file.json</span>
+                          <span className="text-[#E0CA3C]">{client.caseFileJsonUrl ? 'Compiled' : 'Pending'}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => onTriggerAction?.('ORACLE_SWEEP', { client })}
+                          className="w-full mt-1 py-0.5 rounded border border-[#E0CA3C]/50 bg-[#E0CA3C]/10 text-[#E0CA3C] text-[0.55rem] font-bold hover:bg-[#E0CA3C] hover:text-black cursor-pointer"
+                        >
+                          RUN OSINT SWEEP
+                        </button>
+                      </div>
+                    )}
 
-            {/* Active ECS Components Count */}
-            <div className="flex items-center justify-between text-[0.62rem] text-[#DDFBD0]/70 border-t border-[#086375]/40 pt-2">
-              <span>Installed ECS Components:</span>
-              <span className="font-bold text-[#E0CA3C]">
-                {client.activeComponents?.length || 0} Modules Active
-              </span>
-            </div>
+                    {node.id === 'node-dolores' && (
+                      <div className="space-y-1 text-[0.6rem] text-[#DDFBD0]/80">
+                        <div className="flex items-center gap-1.5 mb-1 text-[#3C91E6] font-bold text-[0.65rem]">
+                          <i className="fa-solid fa-wave-square text-[#3C91E6]" />
+                          <span>TASKS & 45-DAY GANTT</span>
+                        </div>
+                        <div className="p-1 rounded bg-[#086375]/15 flex justify-between">
+                          <span>Milestones Done</span>
+                          <span className="text-[#E0CA3C]">
+                            {activeProject?.MilestonesDone ?? 1}/{activeProject?.MilestonesTotal ?? 4}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => onTriggerAction?.('OPEN_TASKS', { client })}
+                          className="w-full mt-1 py-0.5 rounded border border-[#3C91E6]/50 bg-[#3C91E6]/10 text-[#3C91E6] text-[0.55rem] font-bold hover:bg-[#3C91E6] hover:text-white cursor-pointer"
+                        >
+                          OPEN GOOGLE TASKS
+                        </button>
+                      </div>
+                    )}
+
+                    {node.id === 'node-vala' && (
+                      <div className="space-y-1 text-[0.6rem] text-[#DDFBD0]/80">
+                        <div className="flex items-center gap-1.5 mb-1 text-[#E0CA3C] font-bold text-[0.65rem]">
+                          <i className="fa-solid fa-coins text-[#E0CA3C]" />
+                          <span>COMMERCE & FISCAL</span>
+                        </div>
+                        <div className="p-1 rounded bg-[#086375]/15 flex justify-between">
+                          <span>Next 1/3rd Invoice</span>
+                          <span className="text-white font-bold">
+                            ${Math.round((client.ContractValue || 0) / 3).toLocaleString()}
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => onTriggerAction?.('DRAFT_INVOICE', { client })}
+                          className="w-full mt-1 py-0.5 rounded border border-[#E0CA3C]/50 bg-[#E0CA3C]/10 text-[#E0CA3C] text-[0.55rem] font-bold hover:bg-[#E0CA3C] hover:text-black cursor-pointer"
+                        >
+                          DRAFT INVOICE
+                        </button>
+                      </div>
+                    )}
+
+                    {node.id === 'node-daisy' && (
+                      <div className="space-y-1 text-[0.6rem] text-[#DDFBD0]/80">
+                        <div className="flex items-center gap-1.5 mb-1 text-[#FE5F00] font-bold text-[0.65rem]">
+                          <i className="fa-solid fa-envelope-open-text text-[#FE5F00]" />
+                          <span>MCC & BROADCASTS</span>
+                        </div>
+                        <div className="p-1 rounded bg-[#086375]/15 flex justify-between">
+                          <span>Nurture Step</span>
+                          <span className="text-[#FE5F00]">#{stageIndex + 1} Triggered</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => onTriggerAction?.('OPEN_MCC', { client })}
+                          className="w-full mt-1 py-0.5 rounded border border-[#FE5F00]/50 bg-[#FE5F00]/10 text-[#FE5F00] text-[0.55rem] font-bold hover:bg-[#FE5F00] hover:text-black cursor-pointer"
+                        >
+                          DISPATCH MCC
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Dynamically Dropped Service Node Content */}
+                    {node.serviceId && (
+                      <div className="space-y-1 text-[0.6rem] text-[#DDFBD0]/80">
+                        <div className="flex items-center justify-between text-[#E0CA3C] font-bold text-[0.65rem]">
+                          <span className="truncate">{node.title}</span>
+                          <i className="fa-solid fa-puzzle-piece text-xs text-[#E0CA3C]" />
+                        </div>
+                        <p className="text-[0.55rem] text-[#DDFBD0]/60 line-clamp-2">
+                          {SERVICE_REGISTRY.find((s) => s.id === node.serviceId)?.description || 'Active modular component attached.'}
+                        </p>
+                        <button
+                          type="button"
+                          onClick={() => handleToggleComponent(node.serviceId!)}
+                          className="w-full py-0.5 rounded border border-[#FE5F00]/60 bg-[#FE5F00]/10 text-[#FE5F00] text-[0.52rem] font-bold hover:bg-[#FE5F00] hover:text-black cursor-pointer"
+                        >
+                          DETACH MODULE
+                        </button>
+                      </div>
+                    )}
+                  </ResizableNodeContainer>
+                ))}
+              </>
+            )}
           </div>
-
-          {/* ── MODULE 5: UNIVERSAL RESIZABLE SATELLITE NODES ──────────── */}
-          {activeTab === 'SATELLITES' && (
-            <>
-              {nodes.map((node) => (
-                <ResizableNodeContainer
-                  key={node.id}
-                  node={node}
-                  cameraZoom={cameraZoom}
-                  onUpdate={handleUpdateNode}
-                >
-                  {/* Node Specific Contents */}
-                  {node.id === 'node-pamela' && (
-                    <div className="space-y-1 text-[0.6rem] text-[#DDFBD0]/80">
-                      <div className="flex items-center gap-1.5 mb-1 text-[#086375] font-bold text-[0.65rem]">
-                        <i className="fa-solid fa-flask text-emerald-400" />
-                        <span>LEGAL & DRIVE VAULT</span>
-                      </div>
-                      <a
-                        href={client.DriveFolderUrl || '#'}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="flex items-center justify-between p-1 rounded bg-[#086375]/15 hover:bg-[#086375]/30 cursor-pointer text-[#DDFBD0]"
-                      >
-                        <span>Google Drive Vault</span>
-                        <i className="fa-solid fa-arrow-up-right-from-square text-[0.5rem] text-[#E0CA3C]" />
-                      </a>
-                      <div className="flex items-center justify-between p-1 rounded bg-[#086375]/15">
-                        <span>MSA: {client.MSA_DocID ? 'Signed 🔓' : 'Missing 🔒'}</span>
-                      </div>
-                    </div>
-                  )}
-
-                  {node.id === 'node-oracle' && (
-                    <div className="space-y-1 text-[0.6rem] text-[#DDFBD0]/80">
-                      <div className="flex items-center gap-1.5 mb-1 text-[#E0CA3C] font-bold text-[0.65rem]">
-                        <i className="fa-solid fa-eye text-[#E0CA3C]" />
-                        <span>INTELLIGENCE & OSINT</span>
-                      </div>
-                      <div className="p-1 rounded bg-[#086375]/15 flex justify-between">
-                        <span>case_file.json</span>
-                        <span className="text-[#E0CA3C]">{client.caseFileJsonUrl ? 'Compiled' : 'Pending'}</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => onTriggerAction?.('ORACLE_SWEEP', { client })}
-                        className="w-full mt-1 py-0.5 rounded border border-[#E0CA3C]/50 bg-[#E0CA3C]/10 text-[#E0CA3C] text-[0.55rem] font-bold hover:bg-[#E0CA3C] hover:text-black cursor-pointer"
-                      >
-                        RUN OSINT SWEEP
-                      </button>
-                    </div>
-                  )}
-
-                  {node.id === 'node-dolores' && (
-                    <div className="space-y-1 text-[0.6rem] text-[#DDFBD0]/80">
-                      <div className="flex items-center gap-1.5 mb-1 text-[#3C91E6] font-bold text-[0.65rem]">
-                        <i className="fa-solid fa-wave-square text-[#3C91E6]" />
-                        <span>TASKS & 45-DAY GANTT</span>
-                      </div>
-                      <div className="p-1 rounded bg-[#086375]/15 flex justify-between">
-                        <span>Milestones Done</span>
-                        <span className="text-[#E0CA3C]">
-                          {activeProject?.MilestonesDone ?? 1}/{activeProject?.MilestonesTotal ?? 4}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => onTriggerAction?.('OPEN_TASKS', { client })}
-                        className="w-full mt-1 py-0.5 rounded border border-[#3C91E6]/50 bg-[#3C91E6]/10 text-[#3C91E6] text-[0.55rem] font-bold hover:bg-[#3C91E6] hover:text-white cursor-pointer"
-                      >
-                        OPEN GOOGLE TASKS
-                      </button>
-                    </div>
-                  )}
-
-                  {node.id === 'node-vala' && (
-                    <div className="space-y-1 text-[0.6rem] text-[#DDFBD0]/80">
-                      <div className="flex items-center gap-1.5 mb-1 text-[#E0CA3C] font-bold text-[0.65rem]">
-                        <i className="fa-solid fa-coins text-[#E0CA3C]" />
-                        <span>COMMERCE & FISCAL</span>
-                      </div>
-                      <div className="p-1 rounded bg-[#086375]/15 flex justify-between">
-                        <span>Next 1/3rd Invoice</span>
-                        <span className="text-white font-bold">
-                          ${Math.round((client.ContractValue || 0) / 3).toLocaleString()}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => onTriggerAction?.('DRAFT_INVOICE', { client })}
-                        className="w-full mt-1 py-0.5 rounded border border-[#E0CA3C]/50 bg-[#E0CA3C]/10 text-[#E0CA3C] text-[0.55rem] font-bold hover:bg-[#E0CA3C] hover:text-black cursor-pointer"
-                      >
-                        DRAFT INVOICE
-                      </button>
-                    </div>
-                  )}
-
-                  {node.id === 'node-daisy' && (
-                    <div className="space-y-1 text-[0.6rem] text-[#DDFBD0]/80">
-                      <div className="flex items-center gap-1.5 mb-1 text-[#FE5F00] font-bold text-[0.65rem]">
-                        <i className="fa-solid fa-envelope-open-text text-[#FE5F00]" />
-                        <span>MCC & BROADCASTS</span>
-                      </div>
-                      <div className="p-1 rounded bg-[#086375]/15 flex justify-between">
-                        <span>Nurture Step</span>
-                        <span className="text-[#FE5F00]">#{stageIndex + 1} Triggered</span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => onTriggerAction?.('OPEN_MCC', { client })}
-                        className="w-full mt-1 py-0.5 rounded border border-[#FE5F00]/50 bg-[#FE5F00]/10 text-[#FE5F00] text-[0.55rem] font-bold hover:bg-[#FE5F00] hover:text-black cursor-pointer"
-                      >
-                        DISPATCH MCC
-                      </button>
-                    </div>
-                  )}
-
-                  {/* Dynamically Dropped Service Node Content */}
-                  {node.serviceId && (
-                    <div className="space-y-1 text-[0.6rem] text-[#DDFBD0]/80">
-                      <div className="flex items-center justify-between text-[#E0CA3C] font-bold text-[0.65rem]">
-                        <span className="truncate">{node.title}</span>
-                        <i className="fa-solid fa-puzzle-piece text-xs text-[#E0CA3C]" />
-                      </div>
-                      <p className="text-[0.55rem] text-[#DDFBD0]/60 line-clamp-2">
-                        {SERVICE_REGISTRY.find((s) => s.id === node.serviceId)?.description || 'Active modular component attached.'}
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => handleToggleComponent(node.serviceId!)}
-                        className="w-full py-0.5 rounded border border-[#FE5F00]/60 bg-[#FE5F00]/10 text-[#FE5F00] text-[0.52rem] font-bold hover:bg-[#FE5F00] hover:text-black cursor-pointer"
-                      >
-                        DETACH MODULE
-                      </button>
-                    </div>
-                  )}
-                </ResizableNodeContainer>
-              ))}
-            </>
-          )}
         </div>
 
         {/* ── TAB 2: ECS SERVICE CATALOG OVERLAY ────────────── */}
         {activeTab === 'SERVICES' && (
-          <div className="absolute right-10 top-20 z-30">
+          <div className="absolute right-10 top-20 z-30 pointer-events-auto">
             <ServiceDragger
               activeComponents={client.activeComponents || []}
               onToggleComponent={handleToggleComponent}
@@ -596,6 +629,17 @@ export const ProjectWorkbenchView: React.FC<ProjectWorkbenchViewProps> = ({
           </div>
         )}
       </div>
+
+      {/* Financial Mutation Confirmation Modal (Brief Milestone 0 / Rule 3) */}
+      <DropConfirmDialog
+        isOpen={Boolean(pendingDrop)}
+        onCancel={() => setPendingDrop(null)}
+        onConfirm={handleConfirmDrop}
+        serviceName={pendingDrop?.name || ''}
+        priceDelta={pendingDrop?.price || 0}
+        currentValue={client.ContractValue || 0}
+        targetClientName={client.Company_Name}
+      />
     </div>
   );
 };

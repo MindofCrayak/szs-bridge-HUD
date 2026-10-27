@@ -40,6 +40,7 @@ import { normalizeAccountPhase, normalizeSprintStage } from './data/pipeline';
 import { DEMO_CLIENT_UNITS, DEMO_ALERTS, DEMO_TELEMETRY } from './data/demoFleet';
 import { useBridgeKeybindings, loadStoredKeymap, KeymapConfig } from './hooks/useBridgeKeybindings';
 import { KeybindingSettingsModal } from './components/navigation/KeybindingSettingsModal';
+import { HudErrorBoundary } from './components/HudErrorBoundary';
 import { useRTSHotkeys } from './hooks/useKeybindings';
 
 interface AppProps {
@@ -432,36 +433,40 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
           <div className="relative flex-1 w-full overflow-hidden">
             {/* Tactical Canvas: Full-bleed infinite Pan/Zoom & Hierarchical Semantic Zoom */}
             <div className="absolute inset-0 z-0">
-              <TacticalCanvas
-                clients={clients}
-                selectedClientId={selectedClientId}
-                onSelectClient={setSelectedClientId}
-                onUpdateClient={handleUpdateClient}
-                onForceAdvance={handleForceAdvance}
-                scale={canvasZoom}
-                setScale={setCanvasZoom}
-                workbenchClient={workbenchClient}
-                onWorkbenchChange={setWorkbenchClient}
-                accessToken={accessToken}
-                onOpenContextMenu={(x, y, item) => {
-                  if ('AccountPhase' in item) {
-                    setContextMenu({ x, y, client: item });
-                  }
-                }}
-              />
+              <HudErrorBoundary fallbackTitle="TACTICAL CANVAS FAULT">
+                <TacticalCanvas
+                  clients={clients}
+                  selectedClientId={selectedClientId}
+                  onSelectClient={setSelectedClientId}
+                  onUpdateClient={handleUpdateClient}
+                  onForceAdvance={handleForceAdvance}
+                  scale={canvasZoom}
+                  setScale={setCanvasZoom}
+                  workbenchClient={workbenchClient}
+                  onWorkbenchChange={setWorkbenchClient}
+                  accessToken={accessToken}
+                  onOpenContextMenu={(x, y, item) => {
+                    if ('AccountPhase' in item) {
+                      setContextMenu({ x, y, client: item });
+                    }
+                  }}
+                />
+              </HudErrorBoundary>
             </div>
 
             {/* Modular Console Chassis (Bottom HUD) — Absolute overlay, not a flex sibling */}
             <div className="absolute bottom-2 left-0 right-0 z-30 pointer-events-none">
-              <BottomConsoleChassis
-                selectedClient={activeClient}
-                onUpdateClient={handleUpdateClient}
-                onTriggerCommand={(key) => setActiveModal(key)}
-                controlGroups={controlGroups}
-                activeGroupNum={activeGroupNum}
-                onRecallControlGroup={(grp) => handleRecallClientSlot(grp)}
-                context={workbenchClient ? 'CLIENT_WORKBENCH' : 'GLOBAL'}
-              />
+              <HudErrorBoundary fallbackTitle="CHASSIS TELEMETRY FAULT">
+                <BottomConsoleChassis
+                  selectedClient={activeClient}
+                  onUpdateClient={handleUpdateClient}
+                  onTriggerCommand={(key) => setActiveModal(key)}
+                  controlGroups={controlGroups}
+                  activeGroupNum={activeGroupNum}
+                  onRecallControlGroup={(grp) => handleRecallClientSlot(grp)}
+                  context={workbenchClient ? 'CLIENT_WORKBENCH' : 'GLOBAL'}
+                />
+              </HudErrorBoundary>
             </div>
           </div>
         )}

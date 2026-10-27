@@ -85,7 +85,15 @@ export const SlimVitalsCard: React.FC<SlimVitalsCardProps> = ({
 
   return (
     <div
-      onClick={onSelect}
+      onClick={(e) => {
+        if (e.altKey) {
+          e.preventDefault();
+          e.stopPropagation();
+          onContextMenu(e, client);
+          return;
+        }
+        onSelect();
+      }}
       onContextMenu={(e) => onContextMenu(e, client)}
       className={`relative w-full rounded-xl p-2.5 transition-all cursor-pointer select-none border backdrop-blur-md ${
         isSelected
