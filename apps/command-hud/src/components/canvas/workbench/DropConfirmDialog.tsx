@@ -1,5 +1,6 @@
-import React from 'react';
-import { AlertTriangle, DollarSign, ShieldAlert } from 'lucide-react';
+import React, { useEffect, useRef } from 'react';
+import ReactDOM from 'react-dom';
+import { AlertTriangle, ShieldAlert } from 'lucide-react';
 
 interface DropConfirmDialogProps {
   isOpen: boolean;
@@ -20,20 +21,88 @@ export const DropConfirmDialog: React.FC<DropConfirmDialogProps> = ({
   currentValue,
   targetClientName,
 }) => {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const previouslyFocusedElement = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    previouslyFocusedElement.current = document.activeElement as HTMLElement | null;
+
+    // Focus the first button inside dialog on open
+    const focusableElements = dialogRef.current?.querySelectorAll<HTMLElement>(
+      'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    if (focusableElements && focusableElements.length > 0) {
+      focusableElements[0].focus();
+    }
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onCancel();
+        return;
+      }
+
+      if (e.key === 'Tab' && dialogRef.current) {
+        const focusables = dialogRef.current.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+        );
+        if (focusables.length === 0) return;
+
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
+
+        if (e.shiftKey) {
+          if (document.activeElement === first) {
+            e.preventDefault();
+            last.focus();
+          }
+        } else {
+          if (document.activeElement === last) {
+            e.preventDefault();
+            first.focus();
+          }
+        }
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      if (previouslyFocusedElement.current) {
+        try {
+          previouslyFocusedElement.current.focus();
+        } catch {}
+      }
+    };
+  }, [isOpen, onCancel]);
+
   if (!isOpen) return null;
 
   const finalValue = currentValue + priceDelta;
 
-  return (
-    <div className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/80 backdrop-blur-sm select-none font-mono">
-      <div className="w-[420px] rounded-2xl border-2 border-[#FE5F00] bg-[#020500] p-5 shadow-[0_0_50px_rgba(254,95,0,0.4)] text-[#DDFBD0] animate-in fade-in zoom-in-95 duration-150">
+  const modalContent = (
+    <div
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="financial-mutation-dialog-title"
+      className="fixed inset-0 z-[10000] flex items-center justify-center bg-black/80 backdrop-blur-sm select-none font-mono p-4"
+    >
+      <div
+        ref={dialogRef}
+        className="w-full max-w-[420px] rounded-2xl border-2 border-[#FE5F00] bg-[#020500] p-5 shadow-[0_0_50px_rgba(254,95,0,0.4)] text-[#DDFBD0] animate-in fade-in zoom-in-95 duration-150"
+      >
         {/* Header */}
         <div className="flex items-center gap-2.5 border-b border-[#FE5F00]/40 pb-3 mb-4">
           <div className="w-8 h-8 rounded-lg bg-[#FE5F00]/20 border border-[#FE5F00] flex items-center justify-center text-[#FE5F00]">
             <ShieldAlert size={18} />
           </div>
           <div>
-            <h3 className="font-display font-bold text-sm tracking-wide text-white uppercase">
+            <h3
+              id="financial-mutation-dialog-title"
+              className="font-display font-bold text-sm tracking-wide text-white uppercase"
+            >
               Financial Mutation Confirmation
             </h3>
             <span className="text-[10px] text-[#FE5F00] font-bold">
@@ -96,4 +165,8 @@ export const DropConfirmDialog: React.FC<DropConfirmDialogProps> = ({
       </div>
     </div>
   );
+
+  return typeof document !== 'undefined'
+    ? ReactDOM.createPortal(modalContent, document.body)
+    : modalContent;
 };
