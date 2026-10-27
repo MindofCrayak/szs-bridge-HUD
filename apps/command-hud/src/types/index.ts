@@ -49,7 +49,29 @@ export interface ClientRecord {
   caseFileJsonUrl?: string;
   osintGenerated?: boolean;
   leadSource?: string;
+  activeComponents?: string[];
+  posX?: number;
+  posY?: number;
 }
+
+// ── MODULE 4: ENTITY COMPONENT SYSTEM (ECS) SERVICE REGISTRY ─────────────
+export type ClientEntity = {
+  id: string;
+  name: string;
+  activeComponents: string[];
+};
+
+export interface ServiceComponent {
+  id: string;
+  name: string;
+  category: 'INFRA' | 'LEGAL' | 'AI' | 'DELIVERY' | 'GROWTH';
+  price: number;
+  description: string;
+  tasksToInject: string[];
+  legalClauses: string[];
+}
+
+export type ViewportContext = 'GLOBAL' | 'CLIENT_WORKBENCH';
 
 export interface ClientUnit extends ClientRecord {
   id: string;

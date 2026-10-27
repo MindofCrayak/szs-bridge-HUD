@@ -189,7 +189,7 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
               <div className="mb-3">
                 <input
                   type="range"
-                  min="60"
+                  min="20"
                   max="140"
                   step="5"
                   value={Math.round(zoomScale * 100)}
@@ -197,18 +197,25 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
                   className="w-full accent-highlight-gold cursor-pointer h-1.5 bg-accent-teal/30 rounded-lg appearance-none"
                 />
                 <div className="flex justify-between text-[9px] font-mono text-text-mana/50 mt-1">
-                  <span>60% (Macro)</span>
+                  <span>20% (God-View)</span>
                   <span>100% (Default)</span>
                   <span>140% (Focus)</span>
                 </div>
               </div>
 
               {/* Quick Presets */}
-              <div className="grid grid-cols-3 gap-1.5 text-[10px] font-mono mb-2.5">
+              <div className="grid grid-cols-4 gap-1.5 text-[10px] font-mono mb-2.5">
+                <button
+                  type="button"
+                  onClick={() => onSetZoom?.(0.20)}
+                  className="px-1.5 py-1 rounded border border-accent-teal/60 bg-accent-teal/15 text-text-mana hover:border-accent-teal hover:bg-accent-teal/30 transition-colors cursor-pointer text-center"
+                >
+                  20%
+                </button>
                 <button
                   type="button"
                   onClick={() => onSetZoom?.(0.65)}
-                  className="px-2 py-1 rounded border border-accent-teal/60 bg-accent-teal/15 text-text-mana hover:border-accent-teal hover:bg-accent-teal/30 transition-colors cursor-pointer"
+                  className="px-1.5 py-1 rounded border border-accent-teal/60 bg-accent-teal/15 text-text-mana hover:border-accent-teal hover:bg-accent-teal/30 transition-colors cursor-pointer text-center"
                 >
                   65%
                 </button>
@@ -218,14 +225,14 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
                     if (onResetZoom) onResetZoom();
                     else onSetZoom?.(1.0);
                   }}
-                  className="px-2 py-1 rounded border border-highlight-gold/60 bg-highlight-gold/20 text-highlight-gold font-bold hover:bg-highlight-gold/30 transition-colors cursor-pointer"
+                  className="px-1.5 py-1 rounded border border-highlight-gold/60 bg-highlight-gold/20 text-highlight-gold font-bold hover:bg-highlight-gold/30 transition-colors cursor-pointer text-center"
                 >
                   100%
                 </button>
                 <button
                   type="button"
                   onClick={() => onSetZoom?.(1.25)}
-                  className="px-2 py-1 rounded border border-accent-teal/60 bg-accent-teal/15 text-text-mana hover:border-accent-teal hover:bg-accent-teal/30 transition-colors cursor-pointer"
+                  className="px-1.5 py-1 rounded border border-accent-teal/60 bg-accent-teal/15 text-text-mana hover:border-accent-teal hover:bg-accent-teal/30 transition-colors cursor-pointer text-center"
                 >
                   125%
                 </button>

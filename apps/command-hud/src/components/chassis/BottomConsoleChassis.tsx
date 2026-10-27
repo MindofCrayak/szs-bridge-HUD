@@ -19,6 +19,7 @@ interface BottomConsoleChassisProps {
   calendarSources?: CalendarSource[];
   calendarMeetings?: CalendarMeetingEvent[];
   onOpenFeedConfig?: () => void;
+  context?: import('../../types').ViewportContext;
 }
 
 const heavySpring = {
@@ -39,6 +40,7 @@ export const BottomConsoleChassis: React.FC<BottomConsoleChassisProps> = ({
   calendarSources,
   calendarMeetings,
   onOpenFeedConfig,
+  context = 'GLOBAL',
 }) => {
   const { bootStage, bypassBoot } = useChassisLifecycle();
 
@@ -131,6 +133,8 @@ export const BottomConsoleChassis: React.FC<BottomConsoleChassisProps> = ({
               controlGroups={controlGroups}
               activeGroupNum={activeGroupNum}
               onRecallControlGroup={onRecallControlGroup}
+              context={context}
+              selectedClient={selectedClient}
             />
           </div>
         </div>

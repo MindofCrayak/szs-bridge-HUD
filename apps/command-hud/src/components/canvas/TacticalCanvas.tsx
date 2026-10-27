@@ -1,79 +1,49 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { useCanvasTransform } from '../../hooks/useCanvasTransform';
-import { ClientRecord, ProjectRecord } from '../../types';
-import { ACCOUNT_PHASES, SPRINT_STAGES } from '../../data/pipeline';
-import SpatialKanbanColumn, { ColumnState } from './SpatialKanbanColumn';
+import { ClientRecord, ProjectRecord, AccountPhase } from '../../types';
 import { SlimVitalsCard } from './SlimVitalsCard';
-import { ProjectSprintCard } from './ProjectSprintCard';
+import { ProjectWorkbenchView } from './ProjectWorkbenchView';
 
 interface TacticalCanvasProps {
   clients: ClientRecord[];
   selectedClientId: string | null;
   onSelectClient: (clientId: string) => void;
+  onUpdateClient?: (updated: ClientRecord) => void;
   onForceAdvance?: (client: ClientRecord) => void;
   onOpenContextMenu: (x: number, y: number, item: ClientRecord | ProjectRecord) => void;
   scale?: number;
   setScale?: (scale: number | ((prev: number) => number)) => void;
+  onWorkbenchChange?: (client: ClientRecord | null) => void;
 }
 
-const PHASE_COLORS: Record<string, string> = {
-  'phase-01': '#086375',
-  'phase-02': '#3C91E6',
-  'phase-03': '#5F0F40',
-  'phase-04': '#E0CA3C',
-  'phase-05': '#DDFBD0',
-  'phase-06': '#8A9A86',
-};
-
-function createInitialMacroColumns(): ColumnState[] {
-  const columnWidth = 380;
-  const gap = 24;
-  const startX = 64;
-  const startY = 64;
-  const defaultHeight = 720;
-
-  return ACCOUNT_PHASES.map((p, idx) => ({
-    id: p.id,
-    title: p.title,
-    phase: p.phase,
-    badge: p.badge,
-    color: PHASE_COLORS[p.id] || '#086375',
-    x: startX + idx * (columnWidth + gap),
-    y: startY,
-    width: columnWidth,
-    height: defaultHeight,
-    isLocked: false,
-  }));
+interface MacroZone {
+  id: string;
+  phase: AccountPhase;
+  title: string;
+  badge: string;
+  color: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
 }
 
-function createInitialSprintColumns(): ColumnState[] {
-  const columnWidth = 300;
-  const gap = 20;
-  const startX = 64;
-  const startY = 64;
-  const defaultHeight = 700;
-
-  return SPRINT_STAGES.map((s, idx) => ({
-    id: s.id,
-    title: s.title,
-    stage: s.stage,
-    badge: s.badge,
-    color: '#5F0F40',
-    x: startX + idx * (columnWidth + gap),
-    y: startY,
-    width: columnWidth,
-    height: defaultHeight,
-    isLocked: false,
-  }));
-}
+const MACRO_ZONES: MacroZone[] = [
+  { id: 'zone-01', phase: '01: Intake', title: '01: INTAKE', badge: 'LEADS', color: '#086375', x: 80, y: 100, width: 440, height: 1800 },
+  { id: 'zone-02', phase: '02: Session Zero', title: '02: SESSION ZERO', badge: 'DISCOVERY', color: '#3C91E6', x: 580, y: 100, width: 440, height: 1800 },
+  { id: 'zone-03', phase: '03: Active Sprints', title: '03: ACTIVE SPRINTS', badge: 'EXECUTION', color: '#5F0F40', x: 1080, y: 100, width: 440, height: 1800 },
+  { id: 'zone-04', phase: '04: Liftoff', title: '04: LIFTOFF', badge: 'HANDOVER', color: '#E0CA3C', x: 1580, y: 100, width: 440, height: 1800 },
+];
 
 export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
   clients,
   selectedClientId,
   onSelectClient,
+  onUpdateClient,
   onOpenContextMenu,
   scale: propScale,
   setScale: propSetScale,
+  onWorkbenchChange,
 }) => {
   const {
     viewportRef,
@@ -83,6 +53,8 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
     isPanning,
     resetTransform,
     handlePointerDown,
+    setPan,
+    setScale,
   } = useCanvasTransform(propScale, propSetScale);
 
   // Read canvas theme from local storage
@@ -105,32 +77,116 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  // In-Place Option A Drill-Down State
-  const [drillDownClient, setDrillDownClient] = useState<ClientRecord | null>(null);
+  // Tier 2: Project Workbench State
+  const [workbenchClient, setWorkbenchClient] = useState<ClientRecord | null>(null);
 
-  // Spatial column state for Macro (6 columns) and Granular (10 columns)
-  const [macroColumns, setMacroColumns] = useState<ColumnState[]>(createInitialMacroColumns);
-  const [sprintColumns, setSprintColumns] = useState<ColumnState[]>(createInitialSprintColumns);
+  // Free-floating client card positions on 2D infinite plane
+  const [cardPositions, setCardPositions] = useState<Record<string, { x: number; y: number }>>({});
 
-  const handleUpdateMacroColumn = (id: string, updates: Partial<ColumnState>) => {
-    setMacroColumns((prev) =>
-      prev.map((col) => (col.id === id ? { ...col, ...updates } : col))
-    );
-  };
+  // Initialize or re-index card positions based on their AccountPhase zones
+  useEffect(() => {
+    setCardPositions((prev) => {
+      const next = { ...prev };
+      const zoneCounters: Record<string, number> = {
+        '01: Intake': 0,
+        '02: Session Zero': 0,
+        '03: Active Sprints': 0,
+        '04: Liftoff': 0,
+      };
 
-  const handleUpdateSprintColumn = (id: string, updates: Partial<ColumnState>) => {
-    setSprintColumns((prev) =>
-      prev.map((col) => (col.id === id ? { ...col, ...updates } : col))
-    );
-  };
+      clients.forEach((c) => {
+        if (!next[c.ClientID]) {
+          const zone = MACRO_ZONES.find((z) => z.phase === c.AccountPhase) || MACRO_ZONES[0];
+          const count = zoneCounters[zone.phase] || 0;
+          zoneCounters[zone.phase] = count + 1;
+          next[c.ClientID] = {
+            x: zone.x + 20,
+            y: zone.y + 80 + count * 220,
+          };
+        }
+      });
+      return next;
+    });
+  }, [clients]);
 
-  const handleDrillDown = (client: ClientRecord) => {
-    setDrillDownClient(client);
+  // Handle Double-click to open Project Workbench (Tier 2)
+  const handleOpenWorkbench = (client: ClientRecord) => {
+    setWorkbenchClient(client);
     onSelectClient(client.ClientID);
+    onWorkbenchChange?.(client);
+    // Smooth-pan camera to (0,0) and focus
+    setPan({ x: 0, y: 0 });
+    setScale(1.0);
   };
 
-  const handleExitDrillDown = () => {
-    setDrillDownClient(null);
+  const handleCloseWorkbench = () => {
+    setWorkbenchClient(null);
+    onWorkbenchChange?.(null);
+  };
+
+  // Drag-and-Drop calculation of Client Cards across Macro Zones
+  const draggingCardRef = useRef<{
+    id: string;
+    screenX: number;
+    screenY: number;
+    startX: number;
+    startY: number;
+  } | null>(null);
+
+  const onCardPointerDown = (e: React.PointerEvent, client: ClientRecord) => {
+    e.stopPropagation();
+    onSelectClient(client.ClientID);
+    const pos = cardPositions[client.ClientID] || { x: 100, y: 150 };
+    try {
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    } catch {}
+    draggingCardRef.current = {
+      id: client.ClientID,
+      screenX: e.clientX,
+      screenY: e.clientY,
+      startX: pos.x,
+      startY: pos.y,
+    };
+  };
+
+  const onCardPointerMove = (e: React.PointerEvent) => {
+    if (!draggingCardRef.current) return;
+    e.stopPropagation();
+    const zoom = scale > 0 ? scale : 1.0;
+    const dx = (e.clientX - draggingCardRef.current.screenX) / zoom;
+    const dy = (e.clientY - draggingCardRef.current.screenY) / zoom;
+    const newX = draggingCardRef.current.startX + dx;
+    const newY = draggingCardRef.current.startY + dy;
+
+    setCardPositions((prev) => ({
+      ...prev,
+      [draggingCardRef.current!.id]: { x: newX, y: newY },
+    }));
+  };
+
+  const onCardPointerUp = (e: React.PointerEvent, client: ClientRecord) => {
+    if (!draggingCardRef.current) return;
+    e.stopPropagation();
+    try {
+      (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+    } catch {}
+
+    const pos = cardPositions[client.ClientID];
+    if (pos) {
+      // Calculate intersection with Macro Zones
+      const cardCenterX = pos.x + 190;
+      const matchedZone = MACRO_ZONES.find(
+        (z) => cardCenterX >= z.x && cardCenterX <= z.x + z.width
+      );
+
+      if (matchedZone && matchedZone.phase !== client.AccountPhase) {
+        onUpdateClient?.({
+          ...client,
+          AccountPhase: matchedZone.phase,
+        });
+      }
+    }
+    draggingCardRef.current = null;
   };
 
   return (
@@ -162,121 +218,124 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
         )}
       </div>
 
-      {/* Breadcrumb Bar (When drilled down into 10 granular stages) */}
-      {drillDownClient && (
-        <div className="absolute top-4 left-4 z-30 flex items-center gap-2 font-mono text-xs bg-[#020500]/95 border border-[#E0CA3C] rounded-lg px-3 py-1.5 shadow-[0_0_20px_rgba(224,202,60,0.35)]">
-          <button
-            type="button"
-            onClick={handleExitDrillDown}
-            className="text-[#DDFBD0]/70 hover:text-[#E0CA3C] flex items-center gap-1 font-bold transition-colors cursor-pointer"
-          >
-            <span>[ GLOBAL PIPELINE ]</span>
-          </button>
-          <span className="text-[#086375]">/</span>
-          <span className="text-[#E0CA3C] font-bold flex items-center gap-1.5">
-            <span>✦ {drillDownClient.Company_Name || drillDownClient.ClientID}</span>
-            <span className="text-[#FE5F00] text-[0.65rem] px-1.5 py-0.5 bg-[#5F0F40]/70 rounded font-mono">
-              10 STAGES
-            </span>
-          </span>
-          <button
-            type="button"
-            onClick={handleExitDrillDown}
-            className="ml-2 text-xs text-[#FE5F00] hover:text-white px-2 py-0.5 rounded border border-[#FE5F00]/50 hover:bg-[#FE5F00] hover:text-black transition-colors cursor-pointer"
-            title="Press Esc or click to return to Macro Pipeline"
-          >
-            ESC ✕
-          </button>
+      {/* ── TIER 2: PROJECT WORKBENCH VIEW ─────────────────────────── */}
+      {workbenchClient ? (
+        <div className="relative z-30 w-full h-full">
+          <ProjectWorkbenchView
+            client={workbenchClient}
+            onExit={handleCloseWorkbench}
+            onUpdateClient={onUpdateClient}
+            onTriggerAction={(action, payload) => {
+              if (action === 'OPEN_TASKS' || action === 'DRAFT_INVOICE') {
+                onOpenContextMenu(window.innerWidth / 2, window.innerHeight / 2, payload?.client || workbenchClient);
+              }
+            }}
+          />
+        </div>
+      ) : (
+        /* ── TIER 1: GALAXY VIEW (MACRO PIPELINE & FLOATING CARDS) ──── */
+        <div
+          ref={stageRef}
+          data-canvas-bg="true"
+          style={{
+            transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${scale})`,
+            transformOrigin: '0 0',
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            width: '5000px',
+            height: '3000px',
+            transition: isPanning ? 'none' : 'transform 75ms ease-out',
+          }}
+          className="canvas-world-layer bg-transparent border-none block pointer-events-auto"
+        >
+          {/* 1. Macro 4-Stage Bounding Zones */}
+          {MACRO_ZONES.map((zone) => {
+            const count = clients.filter((c) => c.AccountPhase === zone.phase).length;
+            return (
+              <div
+                key={zone.id}
+                style={{
+                  position: 'absolute',
+                  left: `${zone.x}px`,
+                  top: `${zone.y}px`,
+                  width: `${zone.width}px`,
+                  height: `${zone.height}px`,
+                  borderColor: `${zone.color}40`,
+                  backgroundColor: `${zone.color}08`,
+                }}
+                className="pointer-events-none rounded-2xl border-2 border-dashed flex flex-col p-4 select-none backdrop-blur-[2px]"
+              >
+                {/* Zone Header Ribbon */}
+                <div
+                  className="flex items-center justify-between p-3 rounded-xl border border-b-2 mb-4"
+                  style={{ borderColor: `${zone.color}60`, backgroundColor: `${zone.color}20` }}
+                >
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="w-2.5 h-2.5 rounded-full shadow-[0_0_10px_currentColor]"
+                      style={{ backgroundColor: zone.color, color: zone.color }}
+                    />
+                    <span className="font-display font-extrabold text-sm text-[#DDFBD0] tracking-wider">
+                      {zone.title}
+                    </span>
+                  </div>
+                  <span
+                    className="font-mono text-xs font-bold px-2 py-0.5 rounded border"
+                    style={{ borderColor: zone.color, color: zone.color, backgroundColor: `${zone.color}30` }}
+                  >
+                    {count} ACTIVE
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+
+          {/* 2. Free-Floating Absolute Positioned Client Cards */}
+          {clients.map((client) => {
+            const pos = cardPositions[client.ClientID] || { x: 100, y: 150 };
+            const isSelected = selectedClientId === client.ClientID;
+
+            return (
+              <div
+                key={client.ClientID}
+                style={{
+                  position: 'absolute',
+                  left: `${pos.x}px`,
+                  top: `${pos.y}px`,
+                  width: '380px',
+                }}
+                onPointerDown={(e) => onCardPointerDown(e, client)}
+                onPointerMove={onCardPointerMove}
+                onPointerUp={(e) => onCardPointerUp(e, client)}
+                onDoubleClick={() => handleOpenWorkbench(client)}
+                className="cursor-move z-20 pointer-events-auto transition-shadow"
+              >
+                <SlimVitalsCard
+                  client={client}
+                  isSelected={isSelected}
+                  onSelect={() => onSelectClient(client.ClientID)}
+                  onDrillDown={() => handleOpenWorkbench(client)}
+                  onContextMenu={(e, c) => onOpenContextMenu(e.clientX, e.clientY, c)}
+                />
+              </div>
+            );
+          })}
         </div>
       )}
 
-      {/* Hardware-Accelerated 2D World Space Layer */}
-      <div
-        ref={stageRef}
-        data-canvas-bg="true"
-        style={{
-          transform: `translate3d(${pan.x}px, ${pan.y}px, 0) scale(${scale})`,
-          transformOrigin: '0 0',
-          position: 'absolute',
-          top: 0,
-          left: 0,
-          width: '5000px',
-          height: '3000px',
-          transition: isPanning ? 'none' : 'transform 75ms ease-out',
-        }}
-        className="canvas-world-layer bg-transparent border-none block pointer-events-auto"
-      >
-        {!drillDownClient ? (
-          // MACRO SPATIAL VIEW: 6 Floating, Reshapable, Lockable Columns
-          macroColumns.map((col) => {
-            const phaseClients = clients.filter((c) => c.AccountPhase === col.phase);
-            return (
-              <SpatialKanbanColumn
-                key={col.id}
-                column={col}
-                cameraZoom={scale}
-                updateColumn={handleUpdateMacroColumn}
-              >
-                {phaseClients.map((client) => (
-                  <SlimVitalsCard
-                    key={client.ClientID}
-                    client={client}
-                    isSelected={selectedClientId === client.ClientID}
-                    onSelect={() => onSelectClient(client.ClientID)}
-                    onDrillDown={handleDrillDown}
-                    onContextMenu={(e, c) => onOpenContextMenu(e.clientX, e.clientY, c)}
-                  />
-                ))}
-                {phaseClients.length === 0 && (
-                  <div className="h-28 border border-dashed border-[#086375]/30 rounded-lg flex items-center justify-center font-mono text-[0.65rem] text-[#DDFBD0]/40 text-center px-4">
-                    No active nodes in {col.title}
-                  </div>
-                )}
-              </SpatialKanbanColumn>
-            );
-          })
-        ) : (
-          // GRANULAR SPATIAL VIEW: 10 Floating, Reshapable, Lockable Sprint Columns
-          sprintColumns.map((col) => {
-            const stageProjects = (drillDownClient.activeProjects || []).filter(
-              (p) => p.SprintStage === col.stage
-            );
-            return (
-              <SpatialKanbanColumn
-                key={col.id}
-                column={col}
-                cameraZoom={scale}
-                updateColumn={handleUpdateSprintColumn}
-              >
-                {stageProjects.map((project) => (
-                  <ProjectSprintCard
-                    key={project.ProjectID}
-                    project={project}
-                    companyName={drillDownClient.Company_Name}
-                    onContextMenu={onOpenContextMenu}
-                  />
-                ))}
-                {stageProjects.length === 0 && (
-                  <div className="h-24 flex items-center justify-center font-mono text-[0.6rem] text-[#086375]/50 border border-dashed border-[#086375]/30 rounded-lg">
-                    Empty
-                  </div>
-                )}
-              </SpatialKanbanColumn>
-            );
-          })
-        )}
-      </div>
-
       {/* Recenter Horizon Control Pill */}
-      <button
-        type="button"
-        onClick={resetTransform}
-        className="absolute bottom-4 right-4 z-20 flex items-center gap-1.5 rounded-full border border-[#086375] bg-[#020500]/90 px-3.5 py-1.5 font-mono text-[0.65rem] text-[#DDFBD0]/70 hover:border-[#E0CA3C] hover:text-[#E0CA3C] transition-all shadow-lg cursor-pointer"
-        title="Reset canvas pan & zoom (Alt+0)"
-      >
-        <i className="fa-solid fa-arrows-to-dot text-xs text-[#E0CA3C]" />
-        <span>RECENTER HORIZON</span>
-      </button>
+      {!workbenchClient && (
+        <button
+          type="button"
+          onClick={resetTransform}
+          className="absolute bottom-4 right-4 z-20 flex items-center gap-1.5 rounded-full border border-[#086375] bg-[#020500]/90 px-3.5 py-1.5 font-mono text-[0.65rem] text-[#DDFBD0]/70 hover:border-[#E0CA3C] hover:text-[#E0CA3C] transition-all shadow-lg cursor-pointer"
+          title="Reset canvas pan & zoom (Alt+0)"
+        >
+          <i className="fa-solid fa-arrows-to-dot text-xs text-[#E0CA3C]" />
+          <span>RECENTER HORIZON</span>
+        </button>
+      )}
     </div>
   );
 };

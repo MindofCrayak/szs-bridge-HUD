@@ -91,6 +91,7 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
   });
 
   const [canvasZoom, setCanvasZoom] = useState<number>(1.0);
+  const [workbenchClient, setWorkbenchClient] = useState<ClientRecord | null>(null);
 
   const handleToggleSkin = useCallback(() => {
     setCurrentSkin((prev) => {
@@ -403,14 +404,16 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
         {/* Viewport 1: Tactical Horizon (Dashboard) */}
         {currentScreen === 'dashboard' && (
           <div className="flex-1 flex flex-col min-h-0 relative overflow-hidden">
-            {/* Tactical Canvas: Infinite Pan/Zoom & Option A Sprint Drill-Down */}
+            {/* Tactical Canvas: Infinite Pan/Zoom & Hierarchical Semantic Zoom */}
             <TacticalCanvas
               clients={clients}
               selectedClientId={selectedClientId}
               onSelectClient={setSelectedClientId}
+              onUpdateClient={handleUpdateClient}
               onForceAdvance={handleForceAdvance}
               scale={canvasZoom}
               setScale={setCanvasZoom}
+              onWorkbenchChange={setWorkbenchClient}
               onOpenContextMenu={(x, y, item) => {
                 if ('AccountPhase' in item) {
                   setContextMenu({ x, y, client: item });
@@ -426,6 +429,7 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
               controlGroups={controlGroups}
               activeGroupNum={activeGroupNum}
               onRecallControlGroup={(grp) => handleRecallClientSlot(grp)}
+              context={workbenchClient ? 'CLIENT_WORKBENCH' : 'GLOBAL'}
             />
           </div>
         )}
