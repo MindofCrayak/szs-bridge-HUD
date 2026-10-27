@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { ClientRecord, CommandKey } from '../../types';
 import { CalendarBay } from './CalendarBay';
 import { DualCenterBay } from './DualCenterBay';
@@ -20,6 +20,8 @@ interface BottomConsoleChassisProps {
   context?: import('../../types').ViewportContext;
 }
 
+type BayId = 'calendar' | 'alfred' | 'dossier' | 'macropad';
+
 export const BottomConsoleChassis: React.FC<BottomConsoleChassisProps> = ({
   selectedClient,
   onUpdateClient,
@@ -33,76 +35,306 @@ export const BottomConsoleChassis: React.FC<BottomConsoleChassisProps> = ({
   onOpenFeedConfig,
   context = 'GLOBAL',
 }) => {
+  // Pinned state persisted in localStorage
+  const [pinnedBays, setPinnedBays] = useState<Record<BayId, boolean>>(() => {
+    try {
+      const stored = localStorage.getItem('szs_hud_dock_pinned');
+      return stored ? JSON.parse(stored) : { calendar: false, alfred: false, dossier: false, macropad: false };
+    } catch {
+      return { calendar: false, alfred: false, dossier: false, macropad: false };
+    }
+  });
+
+  // Hover state with debounced timeouts (150ms in, 300ms out)
+  const [hoveredBays, setHoveredBays] = useState<Record<BayId, boolean>>({
+    calendar: false,
+    alfred: false,
+    dossier: false,
+    macropad: false,
+  });
+
+  // Track if Alfred input has focus or text to prevent collapse
+  const [isAlfredActive, setIsAlfredActive] = useState(false);
+
+  const hoverEnterTimeoutRef = useRef<Record<BayId, NodeJS.Timeout | null>>({
+    calendar: null,
+    alfred: null,
+    dossier: null,
+    macropad: null,
+  });
+  const hoverLeaveTimeoutRef = useRef<Record<BayId, NodeJS.Timeout | null>>({
+    calendar: null,
+    alfred: null,
+    dossier: null,
+    macropad: null,
+  });
+
+  const togglePin = (bay: BayId) => {
+    setPinnedBays((prev) => {
+      const updated = { ...prev, [bay]: !prev[bay] };
+      try {
+        localStorage.setItem('szs_hud_dock_pinned', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+  };
+
+  const handleMouseEnter = (bay: BayId) => {
+    if (hoverLeaveTimeoutRef.current[bay]) {
+      clearTimeout(hoverLeaveTimeoutRef.current[bay]!);
+      hoverLeaveTimeoutRef.current[bay] = null;
+    }
+    hoverEnterTimeoutRef.current[bay] = setTimeout(() => {
+      setHoveredBays((prev) => ({ ...prev, [bay]: true }));
+    }, 150);
+  };
+
+  const handleMouseLeave = (bay: BayId) => {
+    if (hoverEnterTimeoutRef.current[bay]) {
+      clearTimeout(hoverEnterTimeoutRef.current[bay]!);
+      hoverEnterTimeoutRef.current[bay] = null;
+    }
+    hoverLeaveTimeoutRef.current[bay] = setTimeout(() => {
+      setHoveredBays((prev) => ({ ...prev, [bay]: false }));
+    }, 300);
+  };
+
+  // Close unpinned bays on Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setPinnedBays({ calendar: false, alfred: false, dossier: false, macropad: false });
+        try {
+          localStorage.setItem('szs_hud_dock_pinned', JSON.stringify({ calendar: false, alfred: false, dossier: false, macropad: false }));
+        } catch {}
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  // Listen to focus/blur inside Alfred Core bay to keep it open while active
+  const alfredBayRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = alfredBayRef.current;
+    if (!el) return;
+
+    const handleFocusIn = () => setIsAlfredActive(true);
+    const handleFocusOut = () => {
+      setTimeout(() => {
+        const input = el.querySelector('input, textarea') as HTMLInputElement | null;
+        if (input && input.value.trim().length > 0) {
+          setIsAlfredActive(true);
+        } else if (!el.contains(document.activeElement)) {
+          setIsAlfredActive(false);
+        }
+      }, 50);
+    };
+    const handleInput = (e: Event) => {
+      const target = e.target as HTMLInputElement;
+      if (target && target.value.trim().length > 0) {
+        setIsAlfredActive(true);
+      }
+    };
+
+    el.addEventListener('focusin', handleFocusIn);
+    el.addEventListener('focusout', handleFocusOut);
+    el.addEventListener('input', handleInput);
+
+    return () => {
+      el.removeEventListener('focusin', handleFocusIn);
+      el.removeEventListener('focusout', handleFocusOut);
+      el.removeEventListener('input', handleInput);
+    };
+  }, []);
+
+  const isExpanded = (bay: BayId) => {
+    if (bay === 'alfred' && isAlfredActive) return true;
+    return Boolean(pinnedBays[bay] || hoveredBays[bay]);
+  };
+
   return (
-    <footer
-      className="relative z-30 flex w-full flex-row gap-6 select-none p-3 pt-1 bg-transparent pointer-events-none justify-center"
-      style={{ transform: 'scale(var(--ui-scale, 1))', transformOrigin: 'bottom center' }}
-    >
-      {/* Bay 1: Calendar Bay — Fully visible, no animation gate */}
+    <footer className="relative z-30 flex w-full flex-row items-end gap-3 select-none px-4 pb-2 bg-transparent pointer-events-none justify-center">
+      {/* ── BAY 1: CALENDAR BAY ─────────────────────────────────── */}
       <div
-        className="h-[38vh] min-h-[290px] shrink-0 pointer-events-auto flex flex-col rounded-xl border-2 border-[#1a2b27] bg-[#0d1513] p-1.5 shadow-[0_8px_32px_rgba(0,0,0,0.85)] opacity-100 translate-x-0 translate-y-0"
+        onMouseEnter={() => handleMouseEnter('calendar')}
+        onMouseLeave={() => handleMouseLeave('calendar')}
+        className={`pointer-events-auto flex flex-col rounded-xl border border-[#1a2b27] bg-[#0d1513]/95 shadow-[0_8px_32px_rgba(0,0,0,0.85)] backdrop-blur-md transition-all duration-200 ease-out shrink-0 overflow-hidden ${
+          isExpanded('calendar')
+            ? 'h-[45vh] min-h-[320px] shadow-[0_0_25px_rgba(8,99,117,0.4)]'
+            : 'h-[44px]'
+        }`}
         style={{ width: 'var(--bay-calendar-w, 280px)' }}
       >
-        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg bg-[#040706] p-2.5 border border-[#086375]/30">
-          <div className="crm-grid pointer-events-none absolute inset-0 opacity-20" />
-          <div className="relative z-10 flex min-h-0 flex-1 flex-col">
-            <CalendarBay
-              sources={calendarSources}
-              meetings={calendarMeetings}
-              onOpenFeedConfig={onOpenFeedConfig}
-            />
+        {/* Collapsed Header Bar (~44px) */}
+        <div
+          onClick={() => togglePin('calendar')}
+          className="h-[44px] shrink-0 flex items-center justify-between px-3 cursor-pointer hover:bg-[#10201c] transition-colors border-b border-[#086375]/30"
+        >
+          <div className="flex items-center gap-2">
+            <i className="fa-solid fa-calendar-days text-xs text-[#086375]" />
+            <span className="font-display text-xs font-bold text-[#DDFBD0]">CalendarBay</span>
+            <span className="text-[0.6rem] text-[#DDFBD0]/60">({calendarSources?.filter(s => s.enabled).length || 0} feeds)</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            {pinnedBays.calendar && (
+              <span className="text-[0.55rem] px-1 py-0.2 rounded bg-[#086375]/40 text-[#E0CA3C] font-bold">PINNED</span>
+            )}
+            <i className={`fa-solid fa-chevron-up text-[0.6rem] text-[#DDFBD0]/60 transition-transform duration-200 ${isExpanded('calendar') ? 'rotate-180 text-[#E0CA3C]' : ''}`} />
           </div>
         </div>
+
+        {/* Expanded Content Layer */}
+        {isExpanded('calendar') && (
+          <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-[#040706] p-2.5">
+            <div className="crm-grid pointer-events-none absolute inset-0 opacity-20" />
+            <div className="relative z-10 flex min-h-0 flex-1 flex-col overflow-y-auto">
+              <CalendarBay
+                sources={calendarSources}
+                meetings={calendarMeetings}
+                onOpenFeedConfig={onOpenFeedConfig}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Bay 2: Dual Center Bay (Alfred & Inspector) — Fully visible, no animation gate */}
+      {/* ── BAY 2: DUAL CENTER BAY (ALFRED CORE) ────────────────── */}
       <div
-        className="h-[38vh] min-h-[290px] flex-1 min-w-[320px] pointer-events-auto flex flex-col rounded-xl border-2 border-[#1a2b27] bg-[#0d1513] p-1.5 shadow-[0_8px_32px_rgba(0,0,0,0.85)] opacity-100 translate-x-0 translate-y-0"
-        style={{ width: 'var(--bay-center-w, 420px)' }}
+        ref={alfredBayRef}
+        onMouseEnter={() => handleMouseEnter('alfred')}
+        onMouseLeave={() => handleMouseLeave('alfred')}
+        className={`pointer-events-auto flex flex-col rounded-xl border border-[#1a2b27] bg-[#0d1513]/95 shadow-[0_8px_32px_rgba(0,0,0,0.85)] backdrop-blur-md transition-all duration-200 ease-out flex-1 min-w-[340px] max-w-[560px] overflow-hidden ${
+          isExpanded('alfred')
+            ? 'h-[45vh] min-h-[340px] shadow-[0_0_30px_rgba(8,99,117,0.5)] border-[#086375]/60'
+            : 'h-[44px]'
+        }`}
+        style={{ width: 'var(--bay-center-w, 440px)' }}
       >
-        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg bg-[#040706] p-2.5 border border-[#086375]/40 shadow-[inset_0_0_20px_rgba(8,99,117,0.15)]">
-          <div className="crm-grid pointer-events-none absolute inset-0 opacity-25" />
-          <div className="relative z-10 flex min-h-0 flex-1 flex-col">
-            <DualCenterBay
-              selectedClient={selectedClient}
-              onUpdateClient={onUpdateClient}
-              onLogTerminal={onLogTerminal}
-            />
+        {/* Collapsed Header Bar (~44px) */}
+        <div
+          onClick={() => togglePin('alfred')}
+          className="h-[44px] shrink-0 flex items-center justify-between px-3 cursor-pointer hover:bg-[#10201c] transition-colors border-b border-[#086375]/30"
+        >
+          <div className="flex items-center gap-2">
+            <i className="fa-solid fa-terminal text-xs text-[#E0CA3C]" />
+            <span className="font-display text-xs font-bold text-[#DDFBD0]">Alfred Core</span>
+            <span className="text-[0.6rem] text-[#DDFBD0]/50 truncate max-w-[140px]">
+              {selectedClient ? selectedClient.Company_Name : 'Ready'}
+            </span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            {isAlfredActive && !pinnedBays.alfred && (
+              <span className="text-[0.55rem] px-1 py-0.2 rounded bg-[#FE5F00]/30 text-[#FE5F00] font-bold animate-pulse">ACTIVE</span>
+            )}
+            {pinnedBays.alfred && (
+              <span className="text-[0.55rem] px-1 py-0.2 rounded bg-[#086375]/40 text-[#E0CA3C] font-bold">PINNED</span>
+            )}
+            <i className={`fa-solid fa-chevron-up text-[0.6rem] text-[#DDFBD0]/60 transition-transform duration-200 ${isExpanded('alfred') ? 'rotate-180 text-[#E0CA3C]' : ''}`} />
           </div>
         </div>
+
+        {/* Expanded Content Layer */}
+        {isExpanded('alfred') && (
+          <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-[#040706] p-2.5 shadow-[inset_0_0_20px_rgba(8,99,117,0.15)]">
+            <div className="crm-grid pointer-events-none absolute inset-0 opacity-25" />
+            <div className="relative z-10 flex min-h-0 flex-1 flex-col overflow-y-auto">
+              <DualCenterBay
+                selectedClient={selectedClient}
+                onUpdateClient={onUpdateClient}
+                onLogTerminal={onLogTerminal}
+              />
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Bay 3: Client Dossier Bay — Fully visible, no animation gate */}
+      {/* ── BAY 3: CLIENT DOSSIER BAY ──────────────────────────── */}
       <div
-        className="h-[38vh] min-h-[290px] shrink-0 pointer-events-auto flex flex-col rounded-xl border-2 border-[#1a2b27] bg-[#0d1513] p-1.5 shadow-[0_8px_32px_rgba(0,0,0,0.85)] opacity-100 translate-x-0 translate-y-0"
+        onMouseEnter={() => handleMouseEnter('dossier')}
+        onMouseLeave={() => handleMouseLeave('dossier')}
+        className={`pointer-events-auto flex flex-col rounded-xl border border-[#1a2b27] bg-[#0d1513]/95 shadow-[0_8px_32px_rgba(0,0,0,0.85)] backdrop-blur-md transition-all duration-200 ease-out shrink-0 overflow-hidden ${
+          isExpanded('dossier')
+            ? 'h-[45vh] min-h-[320px] shadow-[0_0_25px_rgba(8,99,117,0.4)]'
+            : 'h-[44px]'
+        }`}
         style={{ width: 'var(--bay-dossier-w, 270px)' }}
       >
-        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg bg-[#040706] p-2.5 border border-[#086375]/30">
-          <div className="crm-grid pointer-events-none absolute inset-0 opacity-20" />
-          <div className="relative z-10 flex min-h-0 flex-1 flex-col">
-            <ClientDossierBay client={selectedClient} />
+        {/* Collapsed Header Bar (~44px) */}
+        <div
+          onClick={() => togglePin('dossier')}
+          className="h-[44px] shrink-0 flex items-center justify-between px-3 cursor-pointer hover:bg-[#10201c] transition-colors border-b border-[#086375]/30"
+        >
+          <div className="flex items-center gap-2">
+            <i className="fa-solid fa-folder-open text-xs text-[#3C91E6]" />
+            <span className="font-display text-xs font-bold text-[#DDFBD0]">Client Dossier</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            {pinnedBays.dossier && (
+              <span className="text-[0.55rem] px-1 py-0.2 rounded bg-[#086375]/40 text-[#E0CA3C] font-bold">PINNED</span>
+            )}
+            <i className={`fa-solid fa-chevron-up text-[0.6rem] text-[#DDFBD0]/60 transition-transform duration-200 ${isExpanded('dossier') ? 'rotate-180 text-[#E0CA3C]' : ''}`} />
           </div>
         </div>
+
+        {/* Expanded Content Layer */}
+        {isExpanded('dossier') && (
+          <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-[#040706] p-2.5">
+            <div className="crm-grid pointer-events-none absolute inset-0 opacity-20" />
+            <div className="relative z-10 flex min-h-0 flex-1 flex-col overflow-y-auto">
+              <ClientDossierBay client={selectedClient} />
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Bay 4: Macro Pad Bay — Fully visible, no animation gate */}
+      {/* ── BAY 4: GLOBAL / CLIENT MACRO PAD ────────────────────── */}
       <div
-        className="h-[38vh] min-h-[290px] shrink-0 pointer-events-auto flex flex-col rounded-xl border-2 border-[#1a2b27] bg-[#0d1513] p-1.5 shadow-[0_8px_32px_rgba(0,0,0,0.85)] opacity-100 translate-x-0 translate-y-0"
+        onMouseEnter={() => handleMouseEnter('macropad')}
+        onMouseLeave={() => handleMouseLeave('macropad')}
+        className={`pointer-events-auto flex flex-col rounded-xl border border-[#1a2b27] bg-[#0d1513]/95 shadow-[0_8px_32px_rgba(0,0,0,0.85)] backdrop-blur-md transition-all duration-200 ease-out shrink-0 overflow-hidden ${
+          isExpanded('macropad')
+            ? 'h-[45vh] min-h-[320px] shadow-[0_0_25px_rgba(8,99,117,0.4)]'
+            : 'h-[44px]'
+        }`}
         style={{ width: 'var(--bay-macro-w, 280px)' }}
       >
-        <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg bg-[#040706] p-2.5 border border-[#086375]/30">
-          <div className="crm-grid pointer-events-none absolute inset-0 opacity-20" />
-          <div className="relative z-10 flex min-h-0 flex-1 flex-col">
-            <MacroPadBay
-              onTriggerCommand={onTriggerCommand}
-              controlGroups={controlGroups}
-              activeGroupNum={activeGroupNum}
-              onRecallControlGroup={onRecallControlGroup}
-              context={context}
-              selectedClient={selectedClient}
-            />
+        {/* Collapsed Header Bar (~44px) */}
+        <div
+          onClick={() => togglePin('macropad')}
+          className="h-[44px] shrink-0 flex items-center justify-between px-3 cursor-pointer hover:bg-[#10201c] transition-colors border-b border-[#086375]/30"
+        >
+          <div className="flex items-center gap-2">
+            <i className="fa-solid fa-grip text-xs text-[#E0CA3C]" />
+            <span className="font-display text-xs font-bold text-[#DDFBD0]">
+              {context === 'CLIENT_WORKBENCH' ? 'Client Pad' : 'Macro Pad'}
+            </span>
+            <span className="text-[0.6rem] text-[#DDFBD0]/50">Q–C</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            {pinnedBays.macropad && (
+              <span className="text-[0.55rem] px-1 py-0.2 rounded bg-[#086375]/40 text-[#E0CA3C] font-bold">PINNED</span>
+            )}
+            <i className={`fa-solid fa-chevron-up text-[0.6rem] text-[#DDFBD0]/60 transition-transform duration-200 ${isExpanded('macropad') ? 'rotate-180 text-[#E0CA3C]' : ''}`} />
           </div>
         </div>
+
+        {/* Expanded Content Layer */}
+        {isExpanded('macropad') && (
+          <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden bg-[#040706] p-2.5">
+            <div className="crm-grid pointer-events-none absolute inset-0 opacity-20" />
+            <div className="relative z-10 flex min-h-0 flex-1 flex-col overflow-y-auto">
+              <MacroPadBay
+                onTriggerCommand={onTriggerCommand}
+                controlGroups={controlGroups}
+                activeGroupNum={activeGroupNum}
+                onRecallControlGroup={onRecallControlGroup}
+                context={context}
+                selectedClient={selectedClient}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </footer>
   );
