@@ -13,6 +13,8 @@ interface ProjectWorkbenchViewProps {
   onTriggerAction?: (actionKey: string, payload?: any) => void;
   cameraZoom?: number;
   accessToken?: string | null;
+  interactionMode?: 'drag' | 'lock' | 'edit';
+  showNonStructural?: boolean;
 }
 
 const SPRINT_STAGES_LIST: SprintStage[] = [
@@ -51,6 +53,8 @@ export const ProjectWorkbenchView: React.FC<ProjectWorkbenchViewProps> = ({
   onTriggerAction,
   cameraZoom = 1.0,
   accessToken = null,
+  interactionMode = 'drag',
+  showNonStructural = true,
 }) => {
   const [activeTab, setActiveTab] = useState<'SATELLITES' | 'SERVICES'>('SATELLITES');
   const activeProject = client.activeProjects?.[0];
@@ -478,12 +482,15 @@ export const ProjectWorkbenchView: React.FC<ProjectWorkbenchViewProps> = ({
             </div>
 
             {/* ── MODULE 5: UNIVERSAL RESIZABLE SATELLITE NODES ──────────── */}
-            {activeTab === 'SATELLITES' && (
+            {activeTab === 'SATELLITES' && showNonStructural && (
               <>
                 {nodes.map((node) => (
                   <ResizableNodeContainer
                     key={node.id}
-                    node={node}
+                    node={{
+                      ...node,
+                      isLocked: node.isLocked || interactionMode === 'lock',
+                    }}
                     cameraZoom={cameraZoom}
                     onUpdate={handleUpdateNode}
                   >

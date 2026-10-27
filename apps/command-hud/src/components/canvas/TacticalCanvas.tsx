@@ -16,6 +16,8 @@ interface TacticalCanvasProps {
   onWorkbenchChange?: (client: ClientRecord | null) => void;
   workbenchClient?: ClientRecord | null;
   accessToken?: string | null;
+  interactionMode?: 'drag' | 'lock' | 'edit';
+  showNonStructural?: boolean;
 }
 
 interface MacroZone {
@@ -48,6 +50,8 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
   onWorkbenchChange,
   workbenchClient: propWorkbenchClient,
   accessToken,
+  interactionMode = 'drag',
+  showNonStructural = true,
 }) => {
   const {
     viewportRef,
@@ -243,6 +247,8 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
             onUpdateClient={onUpdateClient}
             cameraZoom={scale}
             accessToken={accessToken}
+            interactionMode={interactionMode}
+            showNonStructural={showNonStructural}
             onTriggerAction={(action, payload) => {
               if (action === 'OPEN_TASKS' || action === 'DRAFT_INVOICE') {
                 onOpenContextMenu(window.innerWidth / 2, window.innerHeight / 2, payload?.client || workbenchClient);

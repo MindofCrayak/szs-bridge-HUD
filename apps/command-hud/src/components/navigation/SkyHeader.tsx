@@ -1,6 +1,7 @@
 import React from 'react';
 import { HudTelemetry, ScreenView, ClientRecord } from '../types';
 import { SolarMapSelector } from './SolarMapSelector';
+import { TacticalRibbonControls, CanvasInteractionMode } from './TacticalRibbonControls';
 
 interface SkyHeaderProps {
   currentScreen: ScreenView;
@@ -20,6 +21,10 @@ interface SkyHeaderProps {
   clients?: ClientRecord[];
   activeClientId?: string | null;
   onSelectClient?: (client: any) => void;
+  interactionMode?: CanvasInteractionMode;
+  onSetInteractionMode?: (mode: CanvasInteractionMode) => void;
+  showNonStructural?: boolean;
+  onToggleNonStructural?: () => void;
 }
 
 const routeButtonClass = (isActive: boolean): string => `flex items-center gap-1 rounded px-2 py-1 font-display text-[0.62rem] font-bold transition-all cursor-pointer ${
@@ -46,6 +51,10 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
   clients = [],
   activeClientId = null,
   onSelectClient,
+  interactionMode = 'drag',
+  onSetInteractionMode,
+  showNonStructural = true,
+  onToggleNonStructural,
 }) => {
   const [isZoomPopoverOpen, setIsZoomPopoverOpen] = React.useState(false);
   const zoomPopoverRef = React.useRef<HTMLDivElement>(null);
@@ -93,6 +102,16 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
             clients={clients}
             activeClientId={activeClientId}
             onSelectClient={onSelectClient}
+          />
+        )}
+
+        {/* Tactical Ribbon Overhaul: Segmented Mode Controls & Non-Structural Filter */}
+        {onSetInteractionMode && onToggleNonStructural && (
+          <TacticalRibbonControls
+            mode={interactionMode}
+            onSetMode={onSetInteractionMode}
+            showNonStructural={showNonStructural}
+            onToggleNonStructural={onToggleNonStructural}
           />
         )}
 
@@ -205,17 +224,17 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
               <div className="mb-3">
                 <input
                   type="range"
-                  min="20"
-                  max="140"
+                  min="10"
+                  max="160"
                   step="5"
                   value={Math.round(zoomScale * 100)}
                   onChange={(e) => onSetZoom?.(Number(e.target.value) / 100)}
                   className="w-full accent-highlight-gold cursor-pointer h-1.5 bg-accent-teal/30 rounded-lg appearance-none"
                 />
                 <div className="flex justify-between text-[9px] font-mono text-text-mana/50 mt-1">
-                  <span>20% (God-View)</span>
+                  <span>10% (Ultra-Wide)</span>
                   <span>100% (Default)</span>
-                  <span>140% (Focus)</span>
+                  <span>160% (Focus)</span>
                 </div>
               </div>
 
@@ -223,17 +242,17 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
               <div className="grid grid-cols-4 gap-1.5 text-[10px] font-mono mb-2.5">
                 <button
                   type="button"
-                  onClick={() => onSetZoom?.(0.20)}
+                  onClick={() => onSetZoom?.(0.10)}
                   className="px-1.5 py-1 rounded border border-accent-teal/60 bg-accent-teal/15 text-text-mana hover:border-accent-teal hover:bg-accent-teal/30 transition-colors cursor-pointer text-center"
                 >
-                  20%
+                  10%
                 </button>
                 <button
                   type="button"
-                  onClick={() => onSetZoom?.(0.65)}
+                  onClick={() => onSetZoom?.(0.40)}
                   className="px-1.5 py-1 rounded border border-accent-teal/60 bg-accent-teal/15 text-text-mana hover:border-accent-teal hover:bg-accent-teal/30 transition-colors cursor-pointer text-center"
                 >
-                  65%
+                  40%
                 </button>
                 <button
                   type="button"
@@ -247,10 +266,10 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
                 </button>
                 <button
                   type="button"
-                  onClick={() => onSetZoom?.(1.25)}
+                  onClick={() => onSetZoom?.(1.40)}
                   className="px-1.5 py-1 rounded border border-accent-teal/60 bg-accent-teal/15 text-text-mana hover:border-accent-teal hover:bg-accent-teal/30 transition-colors cursor-pointer text-center"
                 >
-                  125%
+                  140%
                 </button>
               </div>
 

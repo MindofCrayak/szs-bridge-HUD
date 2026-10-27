@@ -179,10 +179,10 @@ export const MultiAgentDispatch: React.FC<MultiAgentDispatchProps> = ({
       {/* Floating 320px Auto-Closing Drawer Overlay */}
       {!isCollapsed && (
         <>
-          {/* Outside Backdrop Click Dismiss */}
+          {/* Outside Backdrop Click Dismiss: pointer-events-auto for dismissal, but pointer-events-none during drag */}
           <div
             onClick={() => setIsCollapsed(true)}
-            className="fixed inset-0 top-0 bg-black/60 backdrop-blur-[2px] z-[110] transition-opacity"
+            className="fixed inset-0 top-0 bg-black/60 backdrop-blur-[2px] z-[110] transition-opacity pointer-events-none"
             aria-hidden="true"
           />
 

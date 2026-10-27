@@ -94,6 +94,8 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
 
   const [canvasZoom, setCanvasZoom] = useState<number>(1.0);
   const [workbenchClient, setWorkbenchClient] = useState<ClientRecord | null>(null);
+  const [interactionMode, setInteractionMode] = useState<'drag' | 'lock' | 'edit'>('drag');
+  const [showNonStructural, setShowNonStructural] = useState<boolean>(true);
 
   const handleToggleSkin = useCallback(() => {
     setCurrentSkin((prev) => {
@@ -402,7 +404,7 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
       />
 
       {/* Main Horizon Workspace */}
-      <main className="h-full flex flex-col relative overflow-hidden">
+      <main className="h-full flex flex-col relative overflow-hidden z-[115]">
         {/* Top SkyHeader */}
         <SkyHeader
           currentScreen={currentScreen}
@@ -426,6 +428,10 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
             setWorkbenchClient(c);
             setCurrentScreen('dashboard');
           }}
+          interactionMode={interactionMode}
+          onSetInteractionMode={setInteractionMode}
+          showNonStructural={showNonStructural}
+          onToggleNonStructural={() => setShowNonStructural((prev) => !prev)}
         />
 
         {/* Viewport 1: Tactical Horizon (Dashboard) */}
@@ -445,6 +451,8 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
                   workbenchClient={workbenchClient}
                   onWorkbenchChange={setWorkbenchClient}
                   accessToken={accessToken}
+                  interactionMode={interactionMode}
+                  showNonStructural={showNonStructural}
                   onOpenContextMenu={(x, y, item) => {
                     if ('AccountPhase' in item) {
                       setContextMenu({ x, y, client: item });

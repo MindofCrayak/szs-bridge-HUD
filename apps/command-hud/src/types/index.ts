@@ -141,3 +141,316 @@ export interface AlfredAlert {
 }
 
 export type ActiveModal = CommandKey | 'MENU' | null;
+
+
+// ============================================================================
+// 🛰️ HUD SCHEMA CONTRACT: NODE TAXONOMY & DISCRIMINATED UNIONS
+// ============================================================================
+
+export type NodeCategory = 
+  | 'structural' 
+  | 'entity' 
+  | 'template' 
+  | 'automation' 
+  | 'financial';
+
+export type SubRoutinePersona = 
+  | 'Alfred' 
+  | 'Pamela' 
+  | 'Oracle' 
+  | 'Dolores' 
+  | 'Vala' 
+  | 'Daisy';
+
+export interface BaseHudNodeData {
+  id: string;                          // Unique instance ID (e.g., "node_proj_ICA_01")
+  category: NodeCategory;              // Architectural bucket
+  label: string;                       // Primary UI display title
+  status: 'idle' | 'active' | 'blocked' | 'complete' | 'error';
+  isLocked?: boolean;                  // Prevents canvas movement if true
+  assignedPersona?: SubRoutinePersona; // Persona owner for telemetry badges
+  metadata?: Record<string, unknown>;  // Arbitrary execution cache
+}
+
+// React Flow wrapper
+export interface HudNode<TData extends BaseHudNodeData = BaseHudNodeData> {
+  id: string;
+  type: string;                        // Registered custom component identifier
+  position: { x: number; y: number };
+  data: TData;
+  parentNode?: string;                 // Set when nested inside a Structural Zone
+  extent?: 'parent' | undefined;       // Clamps movement inside parent bounds
+  width?: number;
+  height?: number;
+}
+
+export interface HudEdgeData {
+  edgeType: 'data_pipe' | 'logic_gate' | 'financial_funnel' | 'dependency';
+  isActive: boolean;
+  validationError?: string;
+}
+
+// ============================================================================
+// 1. STRUCTURAL NODES (The Constants)
+// ============================================================================
+
+// 1.1 Master Stage / Zone Node (Canvas Boundary & Phase Gate)
+export interface MasterStageZoneData extends BaseHudNodeData {
+  category: 'structural';
+  zoneType: 'MACRO_ACCOUNT' | 'MICRO_SPRINT';
+  
+  accountPhase?: 
+    | '01: Intake' 
+    | '02: Inception' 
+    | '03: Active Partner' 
+    | '04: Liftoff & Alumni' 
+    | '05: Complete' 
+    | '06: Archived/Sunset';
+    
+  sprintStage?: 
+    | '00: Discovery' 
+    | '01: Vibecheck' 
+    | '02: Contract & Inception' 
+    | '03: Deep Intelligence' 
+    | '04: Session Zero Kickoff' 
+    | '05: Architecture & Builds' 
+    | '06: Mid-Flight Review' 
+    | '07: Final Staging & QA' 
+    | '08: Liftoff & Handover' 
+    | '09: Sunset / Retainer';
+
+  boundingDimensions: { width: number; height: number };
+  allowedEntityTypes: ('lead' | 'project' | 'deliverable')[];
+  ironGateActive: boolean;              // Strict check: Blocks entry if conditions fail (e.g., Missing Deposit)
+}
+
+// 1.2 Subsystem / Department Node
+export interface SubsystemDepartmentData extends BaseHudNodeData {
+  category: 'structural';
+  department: 'Leadership' | 'Intake' | 'Intelligence' | 'Operations' | 'Finance' | 'Retention';
+  persona: SubRoutinePersona;
+  inboxQueueCount: number;
+  routingChannelUrl?: string;          // Internal Google Chat space link
+}
+
+// 1.3 Pipeline Router Node (Branching Logic)
+export interface PipelineRouterData extends BaseHudNodeData {
+  category: 'structural';
+  routingStrategy: 'parallel_split' | 'conditional_branch' | 'merge_join';
+  conditions: Array<{
+    targetHandleId: string;
+    expression: string;                // e.g., "scope.type === 'FULL_BUILD'"
+  }>;
+}
+
+// ============================================================================
+// 2. ENTITY NODES (The Moving Data-Carriers)
+// ============================================================================
+
+// 2.1 Lead / Client Contact Node (Macro Level)
+export interface LeadContactData extends BaseHudNodeData {
+  category: 'entity';
+  clientId: string;                    // e.g., "ICA"
+  firstName: string;
+  lastName: string;
+  companyName: string;
+  email: string;
+  accountPhase: '01: Intake' | '02: Inception' | '03: Active Partner' | '04: Liftoff & Alumni' | '05: Complete' | '06: Archived/Sunset';
+  estimatedValue: number;
+  depositPaid: boolean;
+}
+
+// 2.2 Project Node (Primary Delivery Anchor - Micro Level)
+export interface ProjectNodeData extends BaseHudNodeData {
+  category: 'entity';
+  projectId: string;                   // e.g., "ICA-01"
+  clientId: string;                    // Foreign Key: "ICA"
+  companyName: string;
+  sprintStage: '00: Discovery' | '01: Vibecheck' | '02: Contract & Inception' | '03: Deep Intelligence' | '04: Session Zero Kickoff' | '05: Architecture & Builds' | '06: Mid-Flight Review' | '07: Final Staging & QA' | '08: Liftoff & Handover' | '09: Sunset / Retainer';
+  assignedRateTier: 'Normal ($85)' | 'Premium ($115)' | 'Reduced ($65)' | 'Blueprint ($2,500)';
+  contractValue: number;
+  depositCleared: boolean;
+  driveFolderId: string;               // Permanent Google Drive Directory ID
+  sowDocId?: string;
+  msaDocId?: string;
+  activeRoadblock?: string;
+}
+
+// 2.3 Deliverable / Artifact Node
+export interface DeliverableArtifactData extends BaseHudNodeData {
+  category: 'entity';
+  deliverableId: string;
+  projectId: string;                   // Foreign Key
+  artifactType: 'sow_contract' | 'case_file' | 'sourcebook_deck' | 'code_repo' | 'workspace_tenant';
+  storageUrl: string;                  // Direct asset URL / Drive view URL
+  driveFileId: string;
+  isSignedOrApproved: boolean;
+  version: number;
+}
+
+// 2.4 Competitor Entity Node (Oracle Sandbox)
+export interface CompetitorEntityData extends BaseHudNodeData {
+  category: 'entity';
+  targetId: string;
+  clientId: string;                    // Foreign Key to the client being analyzed
+  domain: string;
+  verificationStatus: 'Candidate' | 'Verified' | 'Disqualified';
+  threatLevel: 'Low' | 'Moderate' | 'High' | 'Critical';
+  gbpScore?: number;
+  reviewCount?: number;
+  scrapedKeywords: string[];
+}
+
+// ============================================================================
+// 3. TEMPLATE & COMPONENT NODES (The Subsystems)
+// ============================================================================
+
+// 3.1 Feature / Service Blueprint Node
+export interface ServiceBlueprintData extends BaseHudNodeData {
+  category: 'template';
+  blueprintId: string;
+  serviceCategory: 'Core Setups' | 'Custom Automations' | 'Maintenance';
+  serviceName: string;
+  defaultHoursEstimate: number;
+  rateTier: 'Normal ($85)' | 'Premium ($115)' | 'Reduced ($65)' | 'Blueprint ($2,500)';
+  fixedPackagePrice?: number;
+  sowLineItemTemplate: string;         // Pre-formatted legal/SOW description
+}
+
+// 3.2 Document / Paperwork Template Node
+export interface DocumentTemplateData extends BaseHudNodeData {
+  category: 'template';
+  templateDriveId: string;             // Immutable Master Doc/Sheet Template ID
+  docType: 'MSA' | 'SOW' | 'INVOICE' | 'CASE_FILE' | 'SOURCEBOOK';
+  requiredTags: string[];              // e.g., ["{{COMPANY_NAME}}", "{{DEPOSIT_AMOUNT}}"]
+  targetFolderSubpath: string;         // e.g., "00 Legal and Admin/Invoices"
+}
+
+// 3.3 Task List / Checklist Node
+export interface TaskListChecklistData extends BaseHudNodeData {
+  category: 'template';
+  checklistId: string;
+  tasklistTitle: string;
+  tasks: Array<{
+    taskId: string;
+    description: string;
+    estimatedMinutes: number;
+    isMilestoneGate: boolean;
+    assignedPersona: SubRoutinePersona;
+  }>;
+}
+
+// ============================================================================
+// 4. FUNCTIONAL & AUTOMATION NODES (The Engines)
+// ============================================================================
+
+// 4.1 Drip Engine / Campaign Node (MCC Integration)
+export interface DripCampaignData extends BaseHudNodeData {
+  category: 'automation';
+  campaignId: string;
+  newsletterId: string;                // Native MCC target (e.g., "sz_newsletter")
+  triggerOnStage: string;              // e.g., "08: Liftoff & Handover"
+  delayIntervalDays: number;
+  templateShellId: string;
+  requiresManualReview: boolean;       // If true, stages in HUD PENDING_APPROVAL
+}
+
+// 4.2 Trigger / Gate Node (The Iron Gate Evaluator)
+export interface TriggerGateData extends BaseHudNodeData {
+  category: 'automation';
+  gateName: string;
+  evaluationRules: Array<{
+    field: string;                     // e.g., "Finances.DepositPaid"
+    operator: 'EQUALS' | 'EXISTS' | 'GREATER_THAN';
+    targetValue: string | number | boolean;
+  }>;
+  isUnlocked: boolean;
+  bypassAllowed: boolean;
+  bypassReason?: string;               // Required if manual operator override is used
+}
+
+// 4.3 Webhook / Integration Node
+export interface WebhookIntegrationData extends BaseHudNodeData {
+  category: 'automation';
+  endpointUrl: string;
+  httpMethod: 'GET' | 'POST';
+  authType: 'BEARER' | 'OAUTH' | 'NONE';
+  timeoutMs: number;
+  lastRunTimestamp?: string;
+  lastResponseStatus?: number;
+}
+
+// 4.4 Notification Node (HUD Telemetry & Alerts)
+export interface NotificationNodeData extends BaseHudNodeData {
+  category: 'automation';
+  alertId: string;                     // ALT-XXXX
+  severity: 'INFO' | 'WARNING' | 'CRITICAL';
+  dispatchTarget: 'HUD_TELEMETRY' | 'ALFRED_DRAWER' | 'EXTERNAL_CHAT';
+  messagePattern: string;              // String with token replacement support
+  isDismissed: boolean;
+}
+
+// ============================================================================
+// 5. FINANCIAL & TRANSACTIONAL NODES (The Ledgers)
+// ============================================================================
+
+// 5.1 Ledger / Retainer Node
+export interface LedgerRetainerData extends BaseHudNodeData {
+  category: 'financial';
+  clientId: string;
+  totalContractValue: number;
+  totalDepositAmount: number;
+  balanceRemaining: number;
+  quarterlyTaxReserve: number;         // Dynamic 25% tax allocation
+  overheadCostSum: number;
+  netMarginPercent: number;
+}
+
+// 5.2 Invoice Node (Milestone Extraction)
+export interface InvoiceNodeData extends BaseHudNodeData {
+  category: 'financial';
+  invoiceId: string;                   // INV-ICA-01
+  projectId: string;
+  milestoneStage: 'Deposit (1/3)' | 'Mid-Flight (1/3)' | 'Liftoff & QA (1/3)' | 'Retainer / Maintenance';
+  invoiceAmount: number;
+  invoiceStatus: 'Draft' | 'Sent' | 'Paid' | 'Void' | 'Overdue';
+  invoiceDriveDocId?: string;
+  paymentDate?: string;
+  autoAdvanceTargetStage?: string;     // Advances Project node on status = "Paid"
+}
+
+// 5.3 Time-Log Node
+export interface TimeLogNodeData extends BaseHudNodeData {
+  category: 'financial';
+  logId: string;
+  projectId: string;
+  assignedRateTier: 'Normal ($85)' | 'Premium ($115)' | 'Reduced ($65)' | 'Blueprint ($2,500)';
+  hourlyRate: number;
+  hoursWorked: number;
+  effectiveHourlyRate: number;         // (InvoiceAmount - Overhead) / ActualHours
+  billingPeriod: string;
+}
+
+// ============================================================================
+// 6. DISCRIMINATED UNION & REGISTRY
+// ============================================================================
+export type HudNodeData =
+  | MasterStageZoneData
+  | SubsystemDepartmentData
+  | PipelineRouterData
+  | LeadContactData
+  | ProjectNodeData
+  | DeliverableArtifactData
+  | CompetitorEntityData
+  | ServiceBlueprintData
+  | DocumentTemplateData
+  | TaskListChecklistData
+  | DripCampaignData
+  | TriggerGateData
+  | WebhookIntegrationData
+  | NotificationNodeData
+  | LedgerRetainerData
+  | InvoiceNodeData
+  | TimeLogNodeData;
+
+export type CanvasNode = HudNode<HudNodeData>;

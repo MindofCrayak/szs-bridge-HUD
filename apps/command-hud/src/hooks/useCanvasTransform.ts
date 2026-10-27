@@ -43,7 +43,7 @@ export function useCanvasTransform(
         e.preventDefault();
         e.stopPropagation();
         const delta = e.deltaY < 0 ? 0.05 : -0.05;
-        setScale((prev) => Math.min(Math.max(0.20, Number((prev + delta).toFixed(2))), 1.40));
+        setScale((prev) => Math.min(Math.max(0.10, Number((prev + delta).toFixed(2))), 1.60));
       }
     };
 
