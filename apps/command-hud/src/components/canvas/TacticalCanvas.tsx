@@ -194,11 +194,11 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
       ref={viewportRef}
       data-canvas-bg="true"
       onPointerDown={handlePointerDown}
-      className="relative w-full h-full overflow-hidden bg-[#020500] select-none cursor-grab active:cursor-grabbing canvas-pannable-bg"
+      className="relative w-full h-full overflow-hidden bg-[#020500] select-none cursor-grab active:cursor-grabbing canvas-pannable-bg z-0"
     >
       {/* Module 2: Customizable Canvas Background Layer */}
       <div
-        className="absolute inset-0 z-0 pointer-events-none canvas-pannable-bg"
+        className="absolute inset-0 z-[-1] pointer-events-none canvas-pannable-bg"
         data-theme={canvasTheme}
         data-canvas-bg="true"
       >
@@ -247,7 +247,7 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
             height: '3000px',
             transition: isPanning ? 'none' : 'transform 75ms ease-out',
           }}
-          className="canvas-world-layer bg-transparent border-none block pointer-events-auto"
+          className="canvas-world-layer bg-transparent border-none block pointer-events-auto z-10"
         >
           {/* 1. Macro 4-Stage Bounding Zones */}
           {MACRO_ZONES.map((zone) => {

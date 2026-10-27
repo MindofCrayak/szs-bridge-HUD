@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { SERVICE_REGISTRY } from '../../data/serviceRegistry';
 import { ServiceComponent } from '../../types';
 
@@ -8,12 +8,23 @@ interface ServiceDraggerProps {
   onAttachComponent?: (component: ServiceComponent) => void;
 }
 
+/**
+ * ServiceDragger: Canvas-side drop target for ECS Service Nodes.
+ *
+ * When a Service Node pill is dragged from the MultiAgentDispatch sidebar
+ * and dropped here, it reads the `serviceId` from the drag payload,
+ * resolves it against SERVICE_REGISTRY, and fires `onAttachComponent`.
+ *
+ * Also provides a manual toggle fallback for attaching/detaching services
+ * from the currently active client's workbench.
+ */
 export const ServiceDragger: React.FC<ServiceDraggerProps> = ({
   activeComponents = [],
   onToggleComponent,
   onAttachComponent,
 }) => {
   const [selectedCategory, setSelectedCategory] = useState<string>('ALL');
+  const [isDragOver, setIsDragOver] = useState(false);
 
   const categories = ['ALL', 'INFRA', 'LEGAL', 'AI', 'DELIVERY', 'GROWTH'];
 
@@ -21,8 +32,43 @@ export const ServiceDragger: React.FC<ServiceDraggerProps> = ({
     ? SERVICE_REGISTRY
     : SERVICE_REGISTRY.filter((s) => s.category === selectedCategory);
 
+  /** Handle drag-over to show visual snap indicator */
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'copy';
+    setIsDragOver(true);
+  }, []);
+
+  const handleDragLeave = useCallback(() => {
+    setIsDragOver(false);
+  }, []);
+
+  /** Handle drop: resolve serviceId from payload and fire attach */
+  const handleDrop = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragOver(false);
+
+    const serviceId = e.dataTransfer.getData('serviceId') || e.dataTransfer.getData('text/plain');
+    if (!serviceId) return;
+
+    const service = SERVICE_REGISTRY.find((s) => s.id === serviceId);
+    if (service) {
+      onToggleComponent?.(service.id);
+      onAttachComponent?.(service);
+    }
+  }, [onToggleComponent, onAttachComponent]);
+
   return (
-    <div className="w-[310px] rounded-xl border border-[#086375]/70 bg-[#020500]/95 backdrop-blur-md p-3 text-[#DDFBD0] shadow-[0_8px_32px_rgba(0,0,0,0.85)] font-mono select-none flex flex-col max-h-[460px]">
+    <div
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      className={`w-[310px] rounded-xl border bg-[#020500]/95 backdrop-blur-md p-3 text-[#DDFBD0] shadow-[0_8px_32px_rgba(0,0,0,0.85)] font-mono select-none flex flex-col max-h-[460px] transition-all duration-200 ${
+        isDragOver
+          ? 'border-[#E0CA3C] ring-2 ring-[#E0CA3C]/40 shadow-[0_0_24px_rgba(224,202,60,0.3)]'
+          : 'border-[#086375]/70'
+      }`}
+    >
       {/* Header */}
       <div className="flex items-center justify-between border-b border-[#086375]/60 pb-2 mb-2">
         <div className="flex items-center gap-1.5">
@@ -35,6 +81,15 @@ export const ServiceDragger: React.FC<ServiceDraggerProps> = ({
           PLUG & PLAY
         </span>
       </div>
+
+      {/* Drop Zone Visual Indicator */}
+      {isDragOver && (
+        <div className="mb-2 p-2 border-2 border-dashed border-[#E0CA3C] rounded-lg text-center animate-pulse">
+          <span className="text-[0.65rem] text-[#E0CA3C] font-bold">
+            ⬇ DROP TO SNAP SERVICE TO CORE NODE
+          </span>
+        </div>
+      )}
 
       {/* Category Pills */}
       <div className="flex gap-1 overflow-x-auto pb-1 mb-2 custom-scrollbar text-[0.58rem]">

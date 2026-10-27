@@ -352,7 +352,7 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
       <ReactiveBridgeCanvas activeDepartment={activeDepartment} alertsCount={headerTelemetry.activeAlertsCount} />
 
       {/* Root grid: 52px permanent rail | main workspace */}
-      <div className="relative z-10 w-full h-full grid grid-cols-[52px_1fr] overflow-hidden">
+      <div className="relative z-10 w-full h-full grid grid-cols-[52px_1fr]">
 
       {/* Permanent 52px Left Rail + Floating 320px Auto-Closing Drawer */}
       <MultiAgentDispatch
