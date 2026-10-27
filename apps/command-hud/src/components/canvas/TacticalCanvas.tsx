@@ -14,6 +14,8 @@ interface TacticalCanvasProps {
   scale?: number;
   setScale?: (scale: number | ((prev: number) => number)) => void;
   onWorkbenchChange?: (client: ClientRecord | null) => void;
+  workbenchClient?: ClientRecord | null;
+  accessToken?: string | null;
 }
 
 interface MacroZone {
@@ -44,6 +46,8 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
   scale: propScale,
   setScale: propSetScale,
   onWorkbenchChange,
+  workbenchClient: propWorkbenchClient,
+  accessToken,
 }) => {
   const {
     viewportRef,
@@ -77,8 +81,20 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
-  // Tier 2: Project Workbench State
-  const [workbenchClient, setWorkbenchClient] = useState<ClientRecord | null>(null);
+  // Tier 2: Project Workbench State (Synced with external prop if provided)
+  const [internalWorkbenchClient, setInternalWorkbenchClient] = useState<ClientRecord | null>(null);
+  const workbenchClient = propWorkbenchClient !== undefined ? propWorkbenchClient : internalWorkbenchClient;
+
+  // Sync internal workbench state when prop changes
+  useEffect(() => {
+    if (propWorkbenchClient !== undefined) {
+      setInternalWorkbenchClient(propWorkbenchClient);
+      if (propWorkbenchClient) {
+        setPan({ x: 0, y: 0 });
+        setScale(1.0);
+      }
+    }
+  }, [propWorkbenchClient, setPan, setScale]);
 
   // Free-floating client card positions on 2D infinite plane
   const [cardPositions, setCardPositions] = useState<Record<string, { x: number; y: number }>>({});
@@ -111,7 +127,7 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
 
   // Handle Double-click to open Project Workbench (Tier 2)
   const handleOpenWorkbench = (client: ClientRecord) => {
-    setWorkbenchClient(client);
+    setInternalWorkbenchClient(client);
     onSelectClient(client.ClientID);
     onWorkbenchChange?.(client);
     // Smooth-pan camera to (0,0) and focus
@@ -120,7 +136,7 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
   };
 
   const handleCloseWorkbench = () => {
-    setWorkbenchClient(null);
+    setInternalWorkbenchClient(null);
     onWorkbenchChange?.(null);
   };
 
@@ -225,6 +241,8 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
             client={workbenchClient}
             onExit={handleCloseWorkbench}
             onUpdateClient={onUpdateClient}
+            cameraZoom={scale}
+            accessToken={accessToken}
             onTriggerAction={(action, payload) => {
               if (action === 'OPEN_TASKS' || action === 'DRAFT_INVOICE') {
                 onOpenContextMenu(window.innerWidth / 2, window.innerHeight / 2, payload?.client || workbenchClient);

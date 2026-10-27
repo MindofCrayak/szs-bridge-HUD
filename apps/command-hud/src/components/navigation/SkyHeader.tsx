@@ -1,5 +1,6 @@
 import React from 'react';
-import { HudTelemetry, ScreenView } from '../types';
+import { HudTelemetry, ScreenView, ClientRecord } from '../types';
+import { SolarMapSelector } from './SolarMapSelector';
 
 interface SkyHeaderProps {
   currentScreen: ScreenView;
@@ -16,6 +17,9 @@ interface SkyHeaderProps {
   currentSkin?: string;
   onToggleSkin?: () => void;
   onSpawnCockpit?: () => void;
+  clients?: ClientRecord[];
+  activeClientId?: string | null;
+  onSelectClient?: (client: any) => void;
 }
 
 const routeButtonClass = (isActive: boolean): string => `flex items-center gap-1 rounded px-2 py-1 font-display text-[0.62rem] font-bold transition-all cursor-pointer ${
@@ -39,6 +43,9 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
   currentSkin = 'heraldry-gold',
   onToggleSkin,
   onSpawnCockpit,
+  clients = [],
+  activeClientId = null,
+  onSelectClient,
 }) => {
   const [isZoomPopoverOpen, setIsZoomPopoverOpen] = React.useState(false);
   const zoomPopoverRef = React.useRef<HTMLDivElement>(null);
@@ -80,6 +87,15 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
+        {/* Module 6: Solar Map Navigation Selector */}
+        {onSelectClient && (
+          <SolarMapSelector
+            clients={clients}
+            activeClientId={activeClientId}
+            onSelectClient={onSelectClient}
+          />
+        )}
+
         {/* Navigation Switcher: 5 Top Department Tabs */}
         <nav aria-label="Department canvases" className="flex items-center gap-1 rounded-lg border border-accent-teal/60 p-1">
           <button

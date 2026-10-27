@@ -40,6 +40,7 @@ import { normalizeAccountPhase, normalizeSprintStage } from './data/pipeline';
 import { DEMO_CLIENT_UNITS, DEMO_ALERTS, DEMO_TELEMETRY } from './data/demoFleet';
 import { useBridgeKeybindings, loadStoredKeymap, KeymapConfig } from './hooks/useBridgeKeybindings';
 import { KeybindingSettingsModal } from './components/navigation/KeybindingSettingsModal';
+import { useRTSHotkeys } from './hooks/useKeybindings';
 
 interface AppProps {
   isDemoModeInitial?: boolean;
@@ -316,6 +317,13 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
     onToggleSettings: () => setIsKeymapModalOpen((prev) => !prev),
   });
 
+  // Module 6: RTS Hotkeys (Ctrl + 1..9) to instantly switch between client solar sandboxes
+  useRTSHotkeys(clients, (targetClient) => {
+    setSelectedClientId(targetClient.ClientID);
+    setWorkbenchClient(targetClient);
+    setCurrentScreen('dashboard');
+  });
+
   // Calculate header telemetry
   const headerTelemetry: HudTelemetry = {
     pipelineMrr: clients.reduce((sum, c) => sum + (c.ContractValue || 0), 0),
@@ -366,6 +374,17 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
         }}
         alerts={alerts}
         clients={clients}
+        selectedClient={activeClient}
+        onSelectClient={(id) => {
+          setSelectedClientId(id);
+          const found = clients.find((c) => c.ClientID === id);
+          if (found) setWorkbenchClient(found);
+        }}
+        onTriggerWorkbench={(client) => {
+          setSelectedClientId(client.ClientID);
+          setWorkbenchClient(client);
+          setCurrentScreen('dashboard');
+        }}
         onCommandSubmit={(cmd) => {
           const newAlert: AlfredAlert = {
             id: `CMD-${Date.now()}`,
@@ -399,6 +418,13 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
           zoomScale={canvasZoom}
           onSetZoom={setCanvasZoom}
           onResetZoom={() => setCanvasZoom(1.0)}
+          clients={clients}
+          activeClientId={selectedClientId}
+          onSelectClient={(c) => {
+            setSelectedClientId(c.ClientID);
+            setWorkbenchClient(c);
+            setCurrentScreen('dashboard');
+          }}
         />
 
         {/* Viewport 1: Tactical Horizon (Dashboard) */}
@@ -414,7 +440,9 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
                 onForceAdvance={handleForceAdvance}
                 scale={canvasZoom}
                 setScale={setCanvasZoom}
+                workbenchClient={workbenchClient}
                 onWorkbenchChange={setWorkbenchClient}
+                accessToken={accessToken}
                 onOpenContextMenu={(x, y, item) => {
                   if ('AccountPhase' in item) {
                     setContextMenu({ x, y, client: item });

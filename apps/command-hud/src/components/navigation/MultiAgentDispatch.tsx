@@ -9,6 +9,9 @@ interface MultiAgentDispatchProps {
   alerts?: AlfredAlert[];
   clients?: ClientRecord[];
   onCommandSubmit?: (cmd: string) => void;
+  selectedClient?: ClientRecord | null;
+  onSelectClient?: (clientId: string) => void;
+  onTriggerWorkbench?: (client: ClientRecord) => void;
 }
 
 /** Maps each ECS service to its owning AI Sub-Routine department */
@@ -63,6 +66,9 @@ export const MultiAgentDispatch: React.FC<MultiAgentDispatchProps> = ({
   alerts = [],
   clients = [],
   onCommandSubmit,
+  selectedClient = null,
+  onSelectClient,
+  onTriggerWorkbench,
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [commandInput, setCommandInput] = useState('');
@@ -84,22 +90,44 @@ export const MultiAgentDispatch: React.FC<MultiAgentDispatchProps> = ({
     });
   }, []);
 
-  /** Module 4: HTML5 Drag Start — attach serviceId payload */
-  const handleDragStart = useCallback((e: React.DragEvent, service: ServiceComponent) => {
-    e.dataTransfer.setData('text/plain', service.id);
+  /**
+   * MODULE 1: AUTO-SWITCH VIEW TO CLIENT SOLAR WORKBENCH ON DRAG INITIATION
+   */
+  const handleServiceDragStart = (e: React.DragEvent, service: ServiceComponent) => {
+    const target = selectedClient || clients[0];
+    if (!target) {
+      console.warn('⚠️ HUD ALERT: Select an active client before deploying modular service components.');
+      return;
+    }
+
+    // Pack ECS metadata into the drag stream
+    const payload = {
+      serviceId: service.id,
+      name: service.name,
+      price: service.price,
+      tasksToInject: service.tasksToInject || [],
+      targetClientId: target.ClientID,
+    };
+
+    e.dataTransfer.setData('application/json', JSON.stringify(payload));
     e.dataTransfer.setData('serviceId', service.id);
     e.dataTransfer.setData('serviceName', service.name);
-    e.dataTransfer.effectAllowed = 'copy';
+    e.dataTransfer.effectAllowed = 'copyMove';
 
     // Create a lightweight drag image
     const ghost = document.createElement('div');
-    ghost.textContent = service.name;
+    ghost.textContent = `✦ ${service.name} (+$${service.price})`;
     ghost.style.cssText =
-      'position:absolute;top:-9999px;left:-9999px;padding:6px 12px;border-radius:8px;background:#020500;border:1px solid #E0CA3C;color:#E0CA3C;font-size:11px;font-family:monospace;white-space:nowrap;';
+      'position:absolute;top:-9999px;left:-9999px;padding:6px 12px;border-radius:8px;background:#020500;border:1px solid #E0CA3C;color:#E0CA3C;font-size:11px;font-family:monospace;white-space:nowrap;box-shadow:0 0 12px rgba(224,202,60,0.4);';
     document.body.appendChild(ghost);
     e.dataTransfer.setDragImage(ghost, 0, 0);
     requestAnimationFrame(() => document.body.removeChild(ghost));
-  }, []);
+
+    // Instantly transition view to the selected client's solar system workbench
+    if (onTriggerWorkbench) {
+      onTriggerWorkbench(target);
+    }
+  };
 
   return (
     <>
@@ -175,6 +203,16 @@ export const MultiAgentDispatch: React.FC<MultiAgentDispatchProps> = ({
               </button>
             </div>
 
+            {/* Active Client Target Banner */}
+            {selectedClient && (
+              <div className="mb-2 p-1.5 rounded bg-[#086375]/20 border border-[#086375] flex items-center justify-between font-mono text-[10px]">
+                <span className="text-[#086375] uppercase">Target Client:</span>
+                <span className="text-[#E0CA3C] font-bold truncate max-w-[150px]">
+                  {selectedClient.Company_Name}
+                </span>
+              </div>
+            )}
+
             {/* ── Tab Switcher: Feed ↔ Services ────────────────────── */}
             <div className="flex gap-1 mb-3 border-b border-[#086375]/30 pb-2">
               <button
@@ -221,6 +259,30 @@ export const MultiAgentDispatch: React.FC<MultiAgentDispatchProps> = ({
                       onChange={(e) => setSearchQuery(e.target.value)}
                       className="w-full box-border bg-[#020500] border border-[#086375] rounded px-2.5 py-1 text-xs text-[#DDFBD0] placeholder-[#DDFBD0]/30 focus:outline-none focus:border-[#FE5F00]"
                     />
+                    {searchQuery.trim() && (
+                      <div className="mt-1 space-y-1 max-h-32 overflow-y-auto custom-scrollbar">
+                        {clients
+                          .filter((c) =>
+                            c.Company_Name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                            c.ClientID.toLowerCase().includes(searchQuery.toLowerCase())
+                          )
+                          .map((c) => (
+                            <button
+                              key={c.ClientID}
+                              type="button"
+                              onClick={() => {
+                                onSelectClient?.(c.ClientID);
+                                onTriggerWorkbench?.(c);
+                                setSearchQuery('');
+                              }}
+                              className="w-full text-left p-1.5 rounded bg-[#086375]/20 hover:bg-[#086375]/50 flex justify-between text-[11px] cursor-pointer"
+                            >
+                              <span className="truncate">{c.Company_Name}</span>
+                              <span className="text-[#E0CA3C] text-[9px]">{c.AccountPhase}</span>
+                            </button>
+                          ))}
+                      </div>
+                    )}
                   </div>
 
                   {/* Priority Alerts Stream */}
@@ -305,9 +367,9 @@ export const MultiAgentDispatch: React.FC<MultiAgentDispatchProps> = ({
                               <div
                                 key={service.id}
                                 draggable
-                                onDragStart={(e) => handleDragStart(e, service)}
+                                onDragStart={(e) => handleServiceDragStart(e, service)}
                                 className="group flex items-center gap-2 p-2 rounded-lg border border-[#086375]/50 bg-[#0d1513]/70 cursor-grab hover:ring-2 hover:ring-[#E0CA3C] hover:border-[#E0CA3C]/60 hover:bg-[#E0CA3C]/5 transition-all active:cursor-grabbing active:ring-[#FE5F00] active:scale-[0.97] select-none w-full box-border"
-                                title={`Drag "${service.name}" onto a client workbench to attach`}
+                                title={`Drag "${service.name}" onto the Solar Workbench to snap it to orbit`}
                               >
                                 {/* Grip Handle */}
                                 <GripVertical

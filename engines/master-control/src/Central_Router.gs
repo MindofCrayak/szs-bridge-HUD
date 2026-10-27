@@ -64,6 +64,9 @@ function doPost(e) {
           actor
         );
         break;
+      case 'attachClientServiceNode':
+        responseData = attachClientServiceNode(payload);
+        break;
       case 'recordPayment':
         return buildResponse_(501, 'Payment recording is not implemented.');
 
@@ -826,3 +829,51 @@ function pushToMailCommandCenter_(clientID, leadData) {
  * Receives the GitHub Action payload and updates the Google Doc source in Drive.
  * (Rename to doPost(e) if this is a standalone script)
  */
+
+function attachClientServiceNode(payload) {
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var projectSheet = ss.getSheetByName("Master_Control_Projects") || ss.getSheetByName("Projects");
+  if (!projectSheet) {
+    projectSheet = ss.getSheets()[0];
+  }
+  var data = projectSheet.getDataRange().getValues();
+  var clientRow = -1;
+
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === String(payload.clientId) || String(data[i][1]) === String(payload.clientId)) {
+      clientRow = i + 1;
+      break;
+    }
+  }
+
+  if (clientRow === -1) throw new Error("Client not found: " + payload.clientId);
+
+  // 1. Update ActiveComponents (Col 8 / JSON array or comma list)
+  var currentComponents = projectSheet.getRange(clientRow, 8).getValue() || "";
+  var compArray = currentComponents ? String(currentComponents).split(",") : [];
+  if (compArray.indexOf(payload.serviceId) === -1) {
+    compArray.push(payload.serviceId);
+    projectSheet.getRange(clientRow, 8).setValue(compArray.join(","));
+  }
+
+  // 2. Increment ContractValue (Col 5)
+  var currentVal = Number(projectSheet.getRange(clientRow, 5).getValue() || 0);
+  var newVal = currentVal + Number(payload.priceDelta);
+  projectSheet.getRange(clientRow, 5).setValue(newVal);
+
+  // 3. Inject standard tasks into Google Tasks if array is non-empty
+  if (payload.tasks && payload.tasks.length > 0 && typeof Tasks !== 'undefined') {
+    try {
+      var taskLists = Tasks.Tasklists.list().getItems();
+      var targetList = taskLists && taskLists.length > 0 ? taskLists[0].getId() : "@default";
+      payload.tasks.forEach(function(taskTitle) {
+        Tasks.Tasks.insert({ title: "[" + payload.serviceId + "] " + taskTitle }, targetList);
+      });
+    } catch (taskErr) {
+      console.warn("Tasks service injection skipped or unavailable: " + taskErr.message);
+    }
+  }
+
+  return { success: true, updatedValue: newVal };
+}
+

@@ -162,5 +162,30 @@ export async function postMasterControlAction(
     throw new Error('Provisioning is not available through the deployed Master Control API; no authorized provisioning wrapper is configured.');
   }
 
+  if (payload.action === 'attachClientServiceNode') {
+    return runMasterControlFunction(accessToken, 'attachClientServiceNode', [payload]);
+  }
+
   throw new Error(`Master Control action "${String(payload.action ?? 'unknown')}" is not available through the deployed API.`);
+}
+
+export async function syncServiceToMasterControl(
+  clientId: string,
+  serviceId: string,
+  priceDelta: number,
+  tasks: string[],
+  accessToken?: string | null,
+): Promise<unknown> {
+  if (!accessToken) {
+    console.log(`[Offline/Demo Mode] syncServiceToMasterControl: Attached ${serviceId} to ${clientId} (+$${priceDelta}) with ${tasks.length} tasks.`);
+    return { success: true, updatedValue: priceDelta, offline: true };
+  }
+  return postMasterControlAction(accessToken, {
+    action: 'attachClientServiceNode',
+    clientId,
+    serviceId,
+    priceDelta,
+    tasks,
+    timestamp: new Date().toISOString(),
+  });
 }
