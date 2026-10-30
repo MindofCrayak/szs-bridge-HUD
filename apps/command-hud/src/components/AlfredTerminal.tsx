@@ -1,9 +1,10 @@
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
-import { GoogleGenAI } from '@google/genai';
 import { ClientUnit } from '../types';
+import { PendingProposal, parseAlfredProposals } from '../ecs/proposals';
 
 interface AlfredTerminalProps {
   activeUnit: ClientUnit | null;
+  onProposal?: (proposal: PendingProposal) => void;
 }
 
 export interface AlfredTerminalHandle {
@@ -15,72 +16,63 @@ interface ChatMessage {
   text: string;
 }
 
-const apiKey = import.meta.env.VITE_GEMINI_API_KEY;
-const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
+interface AlfredContext {
+  name?: string;
+  id?: string;
+  phase?: string;
+  step?: string;
+  roadblock?: string;
+  depositStatus?: string;
+  installedComponents?: string[];
+}
 
-export const AlfredTerminal = forwardRef<AlfredTerminalHandle, AlfredTerminalProps>(({ activeUnit }, ref) => {
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+export const AlfredTerminal = forwardRef<AlfredTerminalHandle, AlfredTerminalProps>(({ activeUnit, onProposal }, ref) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [isProxyConfigured, setIsProxyConfigured] = useState<boolean | null>(null);
   const messagesRef = useRef<ChatMessage[]>([]);
   const pendingExternalCommandsRef = useRef<string[]>([]);
-  // Use ClientID as the canonical unique identifier (dual-schema safe)
-  const u = activeUnit as any;
-  const activeUnitIdRef = useRef<string | undefined>(u?.ClientID || u?.id);
+  const activeUnitIdRef = useRef<string | undefined>(activeUnit?.ClientID ?? activeUnit?.id);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const isTypingRef = useRef(false);
-  activeUnitIdRef.current = u?.ClientID || u?.id;
+  const abortControllerRef = useRef<AbortController | null>(null);
+  activeUnitIdRef.current = activeUnit?.ClientID ?? activeUnit?.id;
 
-  // ── DUAL-SCHEMA RESILIENT CONTEXT BUILDERS ──────────────────────────────
-  // All field accesses use dual-schema fallbacks (ClientRecord & ClientUnit).
-  // Never access fields directly without ?? / || fallback.
-  const complianceStatus = u
-    ? [
-        `Root Folder: ${u.RootFolderID?.trim() ? 'Found' : 'Missing'}`,
-        `MSA: ${u.MSA_DocID?.trim() ? 'Found' : 'Missing'}`,
-        `Project Folder: ${u.ProjectFolderID?.trim() ? 'Found' : 'Missing'}`,
-        `SOW: ${u.SOW_DocID?.trim() ? 'Found' : 'Missing'}`,
-        `Meeting Notes: ${u.MeetingNotes_DriveFolderID?.trim() ? 'Found' : 'Missing'}`,
-      ].join(', ')
-    : 'No client selected.';
-
-  const clientContext = u
-    ? [
-        `Client ID: ${u.ClientID || u.id || 'N/A'}`,
-        `Name: ${u.Company_Name || u.name || u.companyName || 'N/A'}`,
-        `Archetype: ${u.archetype || 'Not recorded'}`,
-        `Pipeline stage: ${u.AccountPhase || u.pipelineStage || 'Not recorded'}`,
-        `Active roadblock: ${u.activeRoadblock || u.roadblock || u.activePebble || 'None recorded'}`,
-        `Contract value: $${(u.ContractValue ?? u.contractValue ?? 0).toLocaleString()}`,
-        `Deposit paid: ${(u.DepositPaid ?? u.depositPaid ?? false) ? 'Yes' : 'No'}`,
-        `Current milestone: ${u.currentMilestone || 'Not recorded'}`,
-        `Milestones completed: ${u.completedMilestones ?? u.MilestonesDone ?? 'N/A'}`,
-        `Milestones total: ${u.totalMilestones ?? u.MilestonesTotal ?? 'N/A'}`,
-        `Google Group Email: ${u.googleGroupEmail || 'Not recorded'}`,
-        `Google Tasklist ID: ${u.taskListId || 'Not recorded'}`,
-        `Chat Space URL: ${u.ChatSpaceUrl || u.chatSpaceUrl || 'Not recorded'}`,
-        `Client notes URL: ${u.NotesDocUrl || u.notesDocUrl || 'Not recorded'}`,
-        `Oracle case file URL: ${u.caseFileJsonUrl || 'Not recorded'}`,
-        `Root Folder ID: ${u.RootFolderID?.trim() || 'Missing'}`,
-        `MSA Document ID: ${u.MSA_DocID?.trim() || 'Missing'}`,
-        `Project Folder ID: ${u.ProjectFolderID?.trim() || 'Missing'}`,
-        `SOW Document ID: ${u.SOW_DocID?.trim() || 'Missing'}`,
-        `Meeting Notes Folder ID: ${u.MeetingNotes_DriveFolderID?.trim() || 'Missing'}`,
-      ].join('\n')
-    : 'No active client is selected.';
-  // ────────────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    const controller = new AbortController();
+    void fetch('/api/alfred/status', { signal: controller.signal })
+      .then(async (response) => {
+        const body: unknown = await response.json();
+        if (!response.ok || !isRecord(body) || typeof body.configured !== 'boolean') {
+          throw new Error('Alfred proxy status is unavailable.');
+        }
+        setIsProxyConfigured(body.configured);
+      })
+      .catch((statusError: unknown) => {
+        if (controller.signal.aborted) return;
+        setIsProxyConfigured(false);
+        setError(statusError instanceof Error ? statusError.message : 'Alfred proxy status is unavailable.');
+      });
+    return () => controller.abort();
+  }, []);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages, isTyping]);
 
   useEffect(() => {
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
     messagesRef.current = [];
     pendingExternalCommandsRef.current = [];
     setMessages([]);
     setError(null);
-  }, [u?.ClientID || u?.id]);
+  }, [activeUnit?.ClientID, activeUnit?.id]);
 
   const sendMessage = useCallback(async (rawText: string) => {
     const text = rawText.trim();
@@ -89,64 +81,84 @@ export const AlfredTerminal = forwardRef<AlfredTerminalHandle, AlfredTerminalPro
       pendingExternalCommandsRef.current.push(text);
       return;
     }
-    const conversation = [...messagesRef.current, { role: 'user' as const, text }];
-    const requestClientId = u?.ClientID || u?.id;
+    const conversation = [...messagesRef.current, { role: 'user' as const, text }].slice(-16);
+    const requestClientId = activeUnit?.ClientID ?? activeUnit?.id;
     messagesRef.current = conversation;
     setMessages(conversation);
     setError(null);
     isTypingRef.current = true;
     setIsTyping(true);
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    const depositPaid = activeUnit?.DepositPaid ?? activeUnit?.depositPaid;
+    const context: AlfredContext = activeUnit
+      ? {
+          name: activeUnit.Company_Name ?? activeUnit.companyName ?? activeUnit.name,
+          id: activeUnit.ClientID ?? activeUnit.id,
+          phase: activeUnit.AccountPhase ?? activeUnit.pipelineStage,
+          step: activeUnit.activeProjects?.[0]?.SprintStage ?? activeUnit.currentMilestone,
+          roadblock: activeUnit.roadblock ?? activeUnit.activePebble,
+          depositStatus: depositPaid === undefined ? 'unknown' : depositPaid ? 'paid' : 'unpaid',
+          installedComponents: activeUnit.activeComponents ?? [],
+        }
+      : {};
 
     try {
-      if (!ai) {
-        throw new Error('Add a valid VITE_GEMINI_API_KEY to the root .env file and restart the development server.');
+      if (isProxyConfigured === false) {
+        throw new Error('No Gemini key found. Add GEMINI_API_KEY to .env.local in the repository root or apps/command-hud, then restart the server.');
       }
 
-      const response = await ai.models.generateContent({
-        model: 'gemini-2.5-flash',
-        contents: conversation.map((message) => ({
-          role: message.role,
-          parts: [{ text: message.text }],
-        })),
-        config: {
-          systemInstruction: `You are Alfred, chief of staff and tactical steward for Session Zero Solutions, a DBA under DrakeCo LLC, led by Drake Austin. Address the principal only as Master Drake or Sir.
-Be crisp, pragmatic, polished, candid, and concise, with understated humor and quiet technical authority. Avoid corporate jargon and filler. Treat infrastructure as a well-managed estate or command bridge; use Session Zero terms such as Digital Pebbles when useful without forcing metaphors.
-Coordinate operational telemetry, compliance, API routing, and system hygiene. Keep the personas distinct: Pamela Isley handles intake/graduation and Drive provisioning; Oracle handles marketing intelligence; Dolores Herbig handles tasks/workspaces; Vala Mal Doran handles milestone billing; Daisy Adare handles offboarding.
-Macro pad mapping: Q = pre-fill Gmail, W = open Chat Space, E = schedule Meet, A = new project onboarding, S = draft milestone invoice, D = Google Tasks checklist, Z = Oracle (quarantined and unavailable in this HUD package), X = meeting notes, C = Alfred compliance check.
-The database stages are 00 Discovery, 01 Pitch Staged, 02 Contract & Inception, 03 Deep Intelligence, 04 Session Zero Kickoff, 05 Builds, 06 Mid-Flight Review, 07 Final Staging, 08 Liftoff, and 09 Sunset / Retainer. The HUD groups these into Intake (00–01), Session Zero (02–04), Active Sprints (05–07), and Liftoff (08–09).
-Identity conventions: ClientID is a three-letter company acronym with a numeric suffix for collisions; ProjectID is {ClientID}-{Number}; InvoiceID is INV-{ClientID}-{Number}; Google Groups use client-{clientid}@sessionzero.solutions. Use supplied IDs only; never mint or imply an ID exists unless an authorized workflow has done so.
-Vala's stated rate rubric is $85/hr Normal, $115/hr Premium, $65/hr Reduced, and $2,500 Blueprint, with milestone invoices typically divided into thirds. No client rate tier is supplied unless present below; never infer a tier or calculate an invoice as approved without it.
-Use only supplied facts. Never invent client data, document IDs, compliance evidence, completed work, or external actions. Clearly state when something is missing or a connector is unavailable. Do not claim Oracle has scraped data or updated a Drive sourcebook unless the integration confirms it.
-Active client context:
-${clientContext}
-Compliance Status for this client: ${complianceStatus}
-Keep responses tactical, brief, and helpful.`,
-        },
+      const response = await fetch('/api/alfred', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        signal: controller.signal,
+        body: JSON.stringify({
+          question: text,
+          history: messagesRef.current.slice(0, -1).slice(-16),
+          context,
+        }),
       });
-      const responseText = response.text?.trim();
+      const body: unknown = await response.json();
+      if (!isRecord(body)) throw new Error('Alfred proxy returned an invalid response.');
+      if (!response.ok) {
+        throw new Error(typeof body.message === 'string' ? body.message : `Alfred request failed (${response.status}).`);
+      }
+      const responseText = typeof body.text === 'string' ? body.text.trim() : '';
       if (!responseText) {
         throw new Error('Alfred returned an empty response. Please try again.');
       }
 
       if (activeUnitIdRef.current === requestClientId) {
+        const parsed = parseAlfredProposals(responseText, requestClientId || '');
+        if (onProposal) parsed.proposals.forEach(onProposal);
+        const displayText = onProposal ? parsed.text : responseText;
         setMessages((previous) => {
-          const nextMessages: ChatMessage[] = [...previous, { role: 'model', text: responseText }];
+          const nextMessages: ChatMessage[] = [
+            ...previous,
+            {
+              role: 'model' as const,
+              text: displayText || 'A proposal was added for human review. No action was executed.',
+            },
+          ].slice(-16);
           messagesRef.current = nextMessages;
           return nextMessages;
         });
       }
     } catch (requestError) {
       if (activeUnitIdRef.current === requestClientId) {
-        const message = requestError instanceof Error
-          ? requestError.message
-          : 'Alfred could not complete the request. Please try again.';
+        const message = requestError instanceof DOMException && requestError.name === 'AbortError'
+          ? 'Stopped.'
+          : requestError instanceof Error
+            ? requestError.message
+            : 'Alfred could not complete the request. Please try again.';
         setError(message);
       }
     } finally {
+      if (abortControllerRef.current === controller) abortControllerRef.current = null;
       isTypingRef.current = false;
       setIsTyping(false);
     }
-  }, [activeUnit]);
+  }, [activeUnit, isProxyConfigured, onProposal]);
 
   useEffect(() => {
     if (!isTyping && pendingExternalCommandsRef.current.length > 0) {
@@ -167,6 +179,11 @@ Keep responses tactical, brief, and helpful.`,
     void sendMessage(text);
   };
 
+  const handleStop = () => {
+    pendingExternalCommandsRef.current = [];
+    abortControllerRef.current?.abort();
+  };
+
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <div
@@ -176,6 +193,11 @@ Keep responses tactical, brief, and helpful.`,
       >
         {messages.length === 0 && (
           <p className="text-text-mana/55">Alfred is ready. Ask about the selected client, milestones, or roadblocks.</p>
+        )}
+        {isProxyConfigured === false && (
+          <p role="status" className="text-alert-orange">
+            No Gemini key found. Add GEMINI_API_KEY to .env.local in the repository root or apps/command-hud, then restart the server.
+          </p>
         )}
         {messages.map((message, index) => (
           <div key={`${message.role}-${index}`} className={message.role === 'user' ? 'text-[#ddfbd0]' : 'text-[#E0CA3C]'}>
@@ -195,16 +217,23 @@ Keep responses tactical, brief, and helpful.`,
           onChange={(event) => setInput(event.target.value)}
           placeholder="Command Alfred..."
           aria-label="Command Alfred"
+          data-alfred-input
           disabled={isTyping}
           className="min-w-0 flex-1 rounded-md border border-[#086375] bg-[#020500] px-3 py-2 text-sm text-[#ddfbd0] outline-none placeholder:text-text-mana/45 focus:border-[#E0CA3C] disabled:opacity-60"
         />
-        <button
-          type="submit"
-          disabled={isTyping || !input.trim()}
-          className="rounded-md bg-alert-orange px-3 font-accent text-bg-obsidian hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
-        >
-          Send
-        </button>
+        {isTyping ? (
+          <button type="button" onClick={handleStop} className="rounded-md border border-alert-orange px-3 text-alert-orange">
+            Stop
+          </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={!input.trim()}
+            className="rounded-md bg-alert-orange px-3 font-accent text-bg-obsidian hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            Send
+          </button>
+        )}
       </form>
     </div>
   );

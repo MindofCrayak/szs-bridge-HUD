@@ -1,14 +1,16 @@
 import React from 'react';
-import { HudTelemetry } from '../../types';
+import { HudTelemetry, TerminalLog } from '../../types';
 
 interface BottomStatusStripProps {
   telemetry: HudTelemetry | null;
   isBackendConnected: boolean;
+  latestLog: TerminalLog | null;
 }
 
 export const BottomStatusStrip: React.FC<BottomStatusStripProps> = ({
   telemetry,
   isBackendConnected,
+  latestLog,
 }) => {
   return (
     <div className="h-[24px] shrink-0 border-t border-[#086375]/40 bg-[#020500]/95 px-3 flex items-center justify-between font-mono text-[0.6rem] text-[#DDFBD0]/70 select-none z-20">
@@ -28,6 +30,16 @@ export const BottomStatusStrip: React.FC<BottomStatusStripProps> = ({
           <span>POLICE ENGINE NOMINAL</span>
         </div>
       </div>
+
+      {latestLog && (
+        <div
+          className="hidden min-w-0 flex-1 truncate px-4 text-text-mana/55 lg:block"
+          title={latestLog.text}
+          aria-label={`Latest activity at ${latestLog.time}`}
+        >
+          <span className="text-highlight-gold">{latestLog.time}</span> {latestLog.text}
+        </div>
+      )}
 
       {/* Right: Key Metrics Strip */}
       <div className="flex items-center gap-3">

@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { Lock, Unlock, Maximize2 } from 'lucide-react';
-import { ConnectionPort } from './ConnectionPort';
+import { Pin } from '../../../ecs/links';
+import { ConnectionPort, ConnectionTargetPreview } from './ConnectionPort';
+import { ContextMenu, MenuItem } from './ContextMenu';
 
 export interface NodeGeometry {
   id: string;
@@ -17,6 +19,11 @@ interface Props {
   node: NodeGeometry;
   cameraZoom: number;
   onUpdate: (id: string, updates: Partial<NodeGeometry>) => void;
+  onPortClick?: (nodeId: string, pin: Pin) => void;
+  onPortPointerDown?: (event: React.PointerEvent<HTMLDivElement>, nodeId: string, pin: Pin) => void;
+  targetPreview?: ConnectionTargetPreview | null;
+  onSelect?: (nodeId: string) => void;
+  onDelete?: (node: NodeGeometry) => void;
   children: React.ReactNode;
 }
 
@@ -24,9 +31,30 @@ export const ResizableNodeContainer: React.FC<Props> = ({
   node,
   cameraZoom,
   onUpdate,
+  onPortClick,
+  onPortPointerDown,
+  targetPreview,
+  onSelect,
+  onDelete,
   children,
 }) => {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const menuItems: MenuItem[] = [
+    {
+      id: 'lock',
+      label: node.isLocked ? 'Unlock Dimensions & Drag' : 'Lock Node (Freeze)',
+      icon: node.isLocked ? <Unlock size={12} /> : <Lock size={12} />,
+      onSelect: () => onUpdate(node.id, { isLocked: !node.isLocked }),
+    },
+    ...(node.serviceId && onDelete
+      ? [{
+          id: 'remove',
+          label: 'Remove from canvas',
+          danger: true,
+          onSelect: () => onDelete(node),
+        }]
+      : []),
+  ];
 
   // 1. Drag Positioning Handler
   const handleDragStart = (e: React.PointerEvent) => {
@@ -100,13 +128,17 @@ export const ResizableNodeContainer: React.FC<Props> = ({
   return (
     <>
       <div
+        data-node-id={node.id}
         onContextMenu={handleContextMenu}
         onClick={(e) => {
           if (e.altKey) {
             e.preventDefault();
             e.stopPropagation();
             setContextMenu({ x: e.clientX, y: e.clientY });
+            return;
           }
+          if ((e.target as HTMLElement).closest('button, input, [data-port-id]')) return;
+          onSelect?.(node.id);
         }}
         style={{
           transform: `translate3d(${node.x}px, ${node.y}px, 0)`,
@@ -123,10 +155,38 @@ export const ResizableNodeContainer: React.FC<Props> = ({
         }`}
       >
         {/* ECS Connection Ports */}
-        <ConnectionPort id={`${node.id}-top`} position="top" />
-        <ConnectionPort id={`${node.id}-bottom`} position="bottom" />
-        <ConnectionPort id={`${node.id}-left`} position="left" />
-        <ConnectionPort id={`${node.id}-right`} position="right" />
+        <ConnectionPort
+          id={`${node.id}-top`}
+          nodeId={node.id}
+          position="top"
+          targetPreview={targetPreview}
+          onPortClick={() => onPortClick?.(node.id, 'top')}
+          onPortPointerDown={(event) => onPortPointerDown?.(event, node.id, 'top')}
+        />
+        <ConnectionPort
+          id={`${node.id}-bottom`}
+          nodeId={node.id}
+          position="bottom"
+          targetPreview={targetPreview}
+          onPortClick={() => onPortClick?.(node.id, 'bottom')}
+          onPortPointerDown={(event) => onPortPointerDown?.(event, node.id, 'bottom')}
+        />
+        <ConnectionPort
+          id={`${node.id}-left`}
+          nodeId={node.id}
+          position="left"
+          targetPreview={targetPreview}
+          onPortClick={() => onPortClick?.(node.id, 'left')}
+          onPortPointerDown={(event) => onPortPointerDown?.(event, node.id, 'left')}
+        />
+        <ConnectionPort
+          id={`${node.id}-right`}
+          nodeId={node.id}
+          position="right"
+          targetPreview={targetPreview}
+          onPortClick={() => onPortClick?.(node.id, 'right')}
+          onPortPointerDown={(event) => onPortPointerDown?.(event, node.id, 'right')}
+        />
 
         {/* Drag Bar Header */}
         <div
@@ -167,25 +227,13 @@ export const ResizableNodeContainer: React.FC<Props> = ({
         )}
       </div>
 
-      {/* Floating Right-Click Lock/Unlock Context Menu */}
       {contextMenu && (
-        <div
-          className="fixed z-[9999] bg-[#020500] border border-[#086375] rounded shadow-[0_8px_32px_rgba(0,0,0,0.9)] p-1 text-xs font-mono text-[#DDFBD0]"
-          style={{ top: contextMenu.y, left: contextMenu.x }}
-          onClick={(e) => e.stopPropagation()}
-        >
-          <button
-            type="button"
-            onClick={() => {
-              onUpdate(node.id, { isLocked: !node.isLocked });
-              setContextMenu(null);
-            }}
-            className="flex items-center gap-2 px-3 py-1.5 hover:bg-[#086375]/30 hover:text-[#E0CA3C] w-full text-left rounded cursor-pointer"
-          >
-            {node.isLocked ? <Unlock size={12} /> : <Lock size={12} />}
-            <span>{node.isLocked ? 'Unlock Dimensions & Drag' : 'Lock Node (Freeze)'}</span>
-          </button>
-        </div>
+        <ContextMenu
+          x={contextMenu.x}
+          y={contextMenu.y}
+          items={menuItems}
+          onClose={() => setContextMenu(null)}
+        />
       )}
     </>
   );

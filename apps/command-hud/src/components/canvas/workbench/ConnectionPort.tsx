@@ -1,13 +1,31 @@
 import React from 'react';
+import { Pin } from '../../../ecs/links';
 
 interface PortProps {
   id: string;
-  position: 'top' | 'bottom' | 'left' | 'right';
-  isConnecting?: boolean;
-  onPortClick?: (portId: string, position: string) => void;
+  nodeId: string;
+  position: Pin;
+  targetPreview?: ConnectionTargetPreview | null;
+  onPortClick?: (portId: string, position: Pin) => void;
+  onPortPointerDown?: (event: React.PointerEvent<HTMLDivElement>, portId: string, position: Pin) => void;
 }
 
-export const ConnectionPort: React.FC<PortProps> = ({ id, position, onPortClick }) => {
+export interface ConnectionTargetPreview {
+  nodeId: string;
+  pin: Pin;
+  valid: boolean;
+  reason?: string;
+}
+
+export const ConnectionPort: React.FC<PortProps> = ({
+  id,
+  nodeId,
+  position,
+  targetPreview,
+  onPortClick,
+  onPortPointerDown,
+}) => {
+  const isTarget = targetPreview?.nodeId === nodeId && targetPreview.pin === position;
   const posClasses = {
     top: '-top-1.5 left-1/2 -translate-x-1/2',
     bottom: '-bottom-1.5 left-1/2 -translate-x-1/2',
@@ -19,12 +37,21 @@ export const ConnectionPort: React.FC<PortProps> = ({ id, position, onPortClick 
     <div
       data-port-id={id}
       data-port-pos={position}
+      data-wire-target={isTarget ? (targetPreview.valid ? 'valid' : 'invalid') : undefined}
+      onPointerDown={(event) => {
+        event.stopPropagation();
+        onPortPointerDown?.(event, id, position);
+      }}
       onClick={(e) => {
         e.stopPropagation();
         onPortClick?.(id, position);
       }}
-      className={`absolute w-3 h-3 rounded-full bg-[#020500] border-2 border-[#086375] hover:border-[#E0CA3C] hover:scale-125 transition-all cursor-crosshair z-30 ${posClasses[position]}`}
-      title={`Connect Port (${position})`}
+      className={`absolute w-3 h-3 rounded-full bg-[#020500] border-2 ${
+        isTarget
+          ? targetPreview.valid ? 'border-[#22C55E] shadow-[0_0_10px_rgba(34,197,94,0.8)]' : 'border-[#EF4444] shadow-[0_0_10px_rgba(239,68,68,0.8)]'
+          : 'border-[#086375] hover:border-[#E0CA3C]'
+      } hover:scale-125 transition-all cursor-crosshair z-30 ${posClasses[position]}`}
+      title={isTarget ? targetPreview.reason || 'Valid wire target' : `Connect Port (${position})`}
     >
       <div className="w-1 h-1 rounded-full bg-[#086375] hover:bg-[#E0CA3C] m-auto mt-0.5" />
     </div>

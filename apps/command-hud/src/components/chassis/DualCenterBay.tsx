@@ -2,17 +2,20 @@ import React, { useState } from 'react';
 import { ClientRecord } from '../../types';
 import { AlfredTerminal } from '../AlfredTerminal';
 import { ClientDetailInspector } from './ClientDetailInspector';
+import { PendingProposal } from '../../ecs/proposals';
 
 interface DualCenterBayProps {
   selectedClient: ClientRecord | null;
   onUpdateClient?: (updated: ClientRecord) => void;
   onLogTerminal?: (message: string, type?: 'normal' | 'action' | 'server' | 'alert') => void;
+  onProposal?: (proposal: PendingProposal) => void;
 }
 
 export const DualCenterBay: React.FC<DualCenterBayProps> = ({
   selectedClient,
   onUpdateClient,
   onLogTerminal,
+  onProposal,
 }) => {
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
 
@@ -44,7 +47,7 @@ export const DualCenterBay: React.FC<DualCenterBayProps> = ({
 
       {/* Base Layer: Alfred Conversational Terminal */}
       <div className="flex-1 min-h-0 relative">
-        <AlfredTerminal activeUnit={selectedClient as any} />
+        <AlfredTerminal activeUnit={selectedClient as any} onProposal={onProposal} />
 
         {/* Slide-Down Center Overlay: ClientDetailInspector */}
         {isInspectorOpen && selectedClient && (

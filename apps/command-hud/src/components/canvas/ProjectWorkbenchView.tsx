@@ -1,8 +1,26 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ClientRecord, SprintStage, ServiceComponent } from '../../types';
-import { ServiceDragger } from './ServiceDragger';
-import { SERVICE_REGISTRY } from '../../data/serviceRegistry';
+import { ClientRecord, SprintStage } from '../../types';
+import { CATALOG, CatalogEntry, Department } from '../../ecs/catalog';
+import {
+  allowedKinds,
+  createUserLink,
+  exportLinkState,
+  Link,
+  LinkKind,
+  LinkState,
+  loadLinkState,
+  parseLinkExport,
+  saveLinkState,
+  WireCreateInput,
+  WirePanelActions,
+  WirePanelSnapshot,
+  WireEditableFields,
+} from '../../ecs/links';
+import { DEPT_COLOR, KIND_STYLE, MAX_ANIMATED } from '../../ecs/wireTheme';
 import { ResizableNodeContainer, NodeGeometry } from './workbench/ResizableNodeContainer';
+import { ConnectionPort } from './workbench/ConnectionPort';
+import type { ConnectionTargetPreview } from './workbench/ConnectionPort';
+import { ContextMenu, MenuItem } from './workbench/ContextMenu';
 import { syncServiceToMasterControl } from '../../data/api';
 import { DropConfirmDialog } from './workbench/DropConfirmDialog';
 
@@ -16,6 +34,9 @@ interface ProjectWorkbenchViewProps {
   accessToken?: string | null;
   interactionMode?: 'drag' | 'lock' | 'edit';
   showNonStructural?: boolean;
+  activeWireIds?: string[];
+  onWirePanelChange?: (snapshot: WirePanelSnapshot | null) => void;
+  onWirePanelActionsChange?: (actions: WirePanelActions | null) => void;
 }
 
 const SPRINT_STAGES_LIST: SprintStage[] = [
@@ -31,11 +52,12 @@ const SPRINT_STAGES_LIST: SprintStage[] = [
   '09: Sunset / Retainer',
 ];
 
-interface Edge {
-  id: string;
-  sourceId: string;
-  targetId: string;
-}
+const PIN_NORMALS: Record<Link['fromPin'], { x: number; y: number }> = {
+  top: { x: 0, y: -1 },
+  bottom: { x: 0, y: 1 },
+  left: { x: -1, y: 0 },
+  right: { x: 1, y: 0 },
+};
 
 interface PendingDropState {
   serviceId: string;
@@ -45,6 +67,60 @@ interface PendingDropState {
   targetClientId: string;
   snapX: number;
   snapY: number;
+  connectFrom?: { nodeId: string; pin: Link['fromPin'] };
+  connectAt?: { x: number; y: number };
+}
+
+interface WorkbenchSnapshot {
+  nodes: NodeGeometry[];
+  links: LinkState | null;
+}
+
+interface PortDragState {
+  fromNodeId: string;
+  fromPin: Link['fromPin'];
+  cursorWorld: { x: number; y: number };
+  startClientX: number;
+  startClientY: number;
+  moved: boolean;
+}
+
+interface WireKindPickerState {
+  x: number;
+  y: number;
+  input: WireCreateInput;
+  kinds: LinkKind[];
+}
+
+function getInitialWorkbenchNodes(client: ClientRecord): NodeGeometry[] {
+  const nodes: NodeGeometry[] = [
+    { id: 'node-pamela', title: 'PAMELA // LEGAL', x: -300, y: -200, width: 220, height: 130, isLocked: false },
+    { id: 'node-oracle', title: 'ORACLE // INTEL', x: 120, y: -200, width: 220, height: 130, isLocked: false },
+    { id: 'node-dolores', title: 'DOLORES // GANTT', x: -300, y: 100, width: 220, height: 130, isLocked: false },
+    { id: 'node-vala', title: 'VALA // FISCAL', x: 120, y: 100, width: 220, height: 130, isLocked: false },
+    { id: 'node-daisy', title: 'DAISY // MCC', x: -100, y: -280, width: 220, height: 120, isLocked: false },
+  ];
+  (client.activeComponents || []).forEach((serviceId, index) => {
+    const entry = CATALOG.find((candidate) => candidate.serviceId === serviceId);
+    if (!entry) return;
+    const angle = (index / Math.max(client.activeComponents?.length || 1, 1)) * Math.PI * 2;
+    nodes.push({
+      id: `node-${entry.serviceId}`,
+      serviceId,
+      title: entry.label,
+      x: Math.round(Math.cos(angle) * 500),
+      y: Math.round(Math.sin(angle) * 400),
+      width: 200,
+      height: 100,
+      isLocked: false,
+    });
+  });
+  return nodes;
+}
+
+function getWireNodeType(id: string, node?: NodeGeometry): WirePanelSnapshot['nodes'][number]['type'] {
+  if (id === 'core-node') return 'core';
+  return node?.serviceId ? 'component' : 'agent';
 }
 
 export const ProjectWorkbenchView: React.FC<ProjectWorkbenchViewProps> = ({
@@ -57,11 +133,172 @@ export const ProjectWorkbenchView: React.FC<ProjectWorkbenchViewProps> = ({
   accessToken = null,
   interactionMode = 'drag',
   showNonStructural = true,
+  activeWireIds = [],
+  onWirePanelChange,
+  onWirePanelActionsChange,
 }) => {
-  const [activeTab, setActiveTab] = useState<'SATELLITES' | 'SERVICES'>('SATELLITES');
+  const [notice, setNotice] = useState<string | null>(null);
+  const [nodes, setNodes] = useState<NodeGeometry[]>(() => getInitialWorkbenchNodes(client));
+  const nodesRef = useRef(nodes);
+  const [linkState, setLinkState] = useState<LinkState | null>(null);
+  const linkStateRef = useRef<LinkState | null>(null);
+  const historyRef = useRef<{ past: WorkbenchSnapshot[]; future: WorkbenchSnapshot[] }>({ past: [], future: [] });
+  const [selectedWireId, setSelectedWireId] = useState<string | null>(null);
+  const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
+  const [selectedPort, setSelectedPort] = useState<{ nodeId: string; pin: Link['fromPin'] } | null>(null);
+  const [portDrag, setPortDrag] = useState<PortDragState | null>(null);
+  const portDragRef = useRef<PortDragState | null>(null);
+  const portDragCleanupRef = useRef<(() => void) | null>(null);
+  const suppressPortClickRef = useRef(false);
+  const [wireKindPicker, setWireKindPicker] = useState<WireKindPickerState | null>(null);
+  const [prefersReducedMotion, setPrefersReducedMotion] = useState(false);
+  const [wireMenu, setWireMenu] = useState<{ x: number; y: number; linkId: string } | null>(null);
+  const [canvasMenu, setCanvasMenu] = useState<{
+    x: number;
+    y: number;
+    connectFrom?: { nodeId: string; pin: Link['fromPin'] };
+  } | null>(null);
+  const [sunMenu, setSunMenu] = useState<{ x: number; y: number } | null>(null);
+  const [sunLocked, setSunLocked] = useState(false);
+  const importInputRef = useRef<HTMLInputElement>(null);
+  const workbenchRef = useRef<HTMLDivElement>(null);
+  const wireActionsRef = useRef<WirePanelActions | null>(null);
   const activeProject = client.activeProjects?.[0];
   const currentStage = activeProject?.SprintStage || '00: Discovery';
   const stageIndex = SPRINT_STAGES_LIST.indexOf(currentStage);
+
+  useEffect(() => () => portDragCleanupRef.current?.(), []);
+
+  useEffect(() => {
+    const preference = window.matchMedia('(prefers-reduced-motion: reduce)');
+    setPrefersReducedMotion(preference.matches);
+    const handleChange = (event: MediaQueryListEvent) => setPrefersReducedMotion(event.matches);
+    preference.addEventListener('change', handleChange);
+    return () => preference.removeEventListener('change', handleChange);
+  }, []);
+
+  useEffect(() => {
+    try {
+      const loaded = loadLinkState(client.ClientID);
+      linkStateRef.current = loaded;
+      historyRef.current = { past: [], future: [] };
+      setLinkState(loaded);
+    } catch (error) {
+      linkStateRef.current = null;
+      setLinkState(null);
+      setNotice(error instanceof Error ? error.message : 'Unable to load saved wire data.');
+    }
+  }, [client.ClientID]);
+
+  useEffect(() => {
+    if (!linkState || linkState.clientId !== client.ClientID) return;
+    try {
+      saveLinkState(linkState);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Unable to save wire data.');
+    }
+  }, [client.ClientID, linkState]);
+
+  useEffect(() => {
+    const initialNodes = getInitialWorkbenchNodes(client);
+    nodesRef.current = initialNodes;
+    setNodes(initialNodes);
+  }, [client.ClientID]);
+
+  const updateNodes = (update: (current: NodeGeometry[]) => NodeGeometry[]) => {
+    const next = update(nodesRef.current);
+    nodesRef.current = next;
+    setNodes(next);
+  };
+
+  const commitWorkbenchState = (nextNodes: NodeGeometry[], nextLinks: LinkState | null) => {
+    const history = historyRef.current;
+    history.past.push({ nodes: nodesRef.current, links: linkStateRef.current });
+    if (history.past.length > 50) history.past.shift();
+    history.future = [];
+    nodesRef.current = nextNodes;
+    linkStateRef.current = nextLinks;
+    setNodes(nextNodes);
+    setLinkState(nextLinks);
+  };
+
+  const commitLinkState = (next: LinkState) => {
+    const previous = linkStateRef.current;
+    if (!previous || previous.clientId !== client.ClientID) return;
+    commitWorkbenchState(nodesRef.current, next);
+  };
+
+  const updateLinkState = (update: (current: LinkState) => LinkState) => {
+    const current = linkStateRef.current;
+    if (!current || current.clientId !== client.ClientID) {
+      setNotice('Wire data is unavailable; reload the Solar Workbench before changing wires.');
+      return;
+    }
+    const next = update(current);
+    if (next !== current) commitLinkState(next);
+  };
+
+  const undoWorkbenchChange = () => {
+    const history = historyRef.current;
+    const previous = history.past.pop();
+    if (!previous) return;
+    history.future.push({ nodes: nodesRef.current, links: linkStateRef.current });
+    nodesRef.current = previous.nodes;
+    linkStateRef.current = previous.links;
+    setNodes(previous.nodes);
+    setLinkState(previous.links);
+  };
+
+  const redoWorkbenchChange = () => {
+    const history = historyRef.current;
+    const next = history.future.pop();
+    if (!next) return;
+    history.past.push({ nodes: nodesRef.current, links: linkStateRef.current });
+    nodesRef.current = next.nodes;
+    linkStateRef.current = next.links;
+    setNodes(next.nodes);
+    setLinkState(next.links);
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      const target = event.target;
+      if (target instanceof HTMLElement && (
+        target.isContentEditable
+        || target.closest('[data-alfred-input]')
+        || ['INPUT', 'TEXTAREA', 'SELECT'].includes(target.tagName)
+      )) return;
+      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
+        event.preventDefault();
+        if (event.shiftKey) redoWorkbenchChange();
+        else undoWorkbenchChange();
+      } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'y') {
+        event.preventDefault();
+        redoWorkbenchChange();
+      } else if ((event.key === 'Delete' || event.key === 'Backspace') && selectedWireId) {
+        event.preventDefault();
+        removeWire(selectedWireId);
+      } else if (event.key === 'Escape') {
+        portDragCleanupRef.current?.();
+        portDragRef.current = null;
+        setPortDrag(null);
+        setWireKindPicker(null);
+        setSelectedPort(null);
+        setSelectedWireId(null);
+        setWireMenu(null);
+        setCanvasMenu(null);
+        setSunMenu(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  });
+
+  useEffect(() => {
+    if (!notice) return;
+    const timeout = window.setTimeout(() => setNotice(null), 5000);
+    return () => window.clearTimeout(timeout);
+  }, [notice]);
 
   // ── STEP 2: Sun Position State (per ClientID) ───────────────────
   const [sunPos, setSunPos] = useState<{ x: number; y: number }>(() => {
@@ -80,23 +317,6 @@ export const ProjectWorkbenchView: React.FC<ProjectWorkbenchViewProps> = ({
     } catch {}
   }, [sunPos, client.ClientID]);
 
-  // Dynamic satellite & ECS nodes state
-  const [nodes, setNodes] = useState<NodeGeometry[]>([
-    { id: 'node-pamela', title: 'PAMELA // LEGAL', x: -300, y: -200, width: 220, height: 130, isLocked: false },
-    { id: 'node-oracle', title: 'ORACLE // INTEL', x: 120, y: -200, width: 220, height: 130, isLocked: false },
-    { id: 'node-dolores', title: 'DOLORES // GANTT', x: -300, y: 100, width: 220, height: 130, isLocked: false },
-    { id: 'node-vala', title: 'VALA // FISCAL', x: 120, y: 100, width: 220, height: 130, isLocked: false },
-    { id: 'node-daisy', title: 'DAISY // MCC', x: -100, y: -280, width: 220, height: 120, isLocked: false },
-  ]);
-
-  const [edges, setEdges] = useState<Edge[]>([
-    { id: 'edge-core-pamela', sourceId: 'core-node', targetId: 'node-pamela' },
-    { id: 'edge-core-oracle', sourceId: 'core-node', targetId: 'node-oracle' },
-    { id: 'edge-core-dolores', sourceId: 'core-node', targetId: 'node-dolores' },
-    { id: 'edge-core-vala', sourceId: 'core-node', targetId: 'node-vala' },
-    { id: 'edge-core-daisy', sourceId: 'core-node', targetId: 'node-daisy' },
-  ]);
-
   const [isDropActive, setIsDropActive] = useState(false);
   const [pendingDrop, setPendingDrop] = useState<PendingDropState | null>(null);
 
@@ -108,16 +328,16 @@ export const ProjectWorkbenchView: React.FC<ProjectWorkbenchViewProps> = ({
     y: sunPos.y - 140,
     width: 420,
     height: 280,
-    isLocked: interactionMode === 'lock',
+    isLocked: interactionMode === 'lock' || sunLocked,
   };
 
   const handleUpdateNode = (id: string, updates: Partial<NodeGeometry>) => {
-    setNodes((prev) => prev.map((n) => (n.id === id ? { ...n, ...updates } : n)));
+    updateNodes((current) => current.map((node) => (node.id === id ? { ...node, ...updates } : node)));
   };
 
   // ── SUN DRAG HANDLER (Reuses satellite drag pattern with zoom compensation) ──
   const handleSunPointerDown = (e: React.PointerEvent) => {
-    if (interactionMode === 'lock' || e.button !== 0) return;
+    if (interactionMode === 'lock' || sunLocked || e.button !== 0) return;
     e.stopPropagation();
 
     const startX = e.clientX;
@@ -147,6 +367,7 @@ export const ProjectWorkbenchView: React.FC<ProjectWorkbenchViewProps> = ({
   // Double-click to recenter Sun to (0, 0)
   const handleSunDoubleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
+    if (sunLocked) return;
     setSunPos({ x: 0, y: 0 });
   };
 
@@ -180,7 +401,7 @@ export const ProjectWorkbenchView: React.FC<ProjectWorkbenchViewProps> = ({
 
     if (!serviceId) return;
 
-    const registryService = SERVICE_REGISTRY.find((s) => s.id === serviceId);
+    const registryService = CATALOG.find((s) => s.serviceId === serviceId);
     if (registryService) {
       name = name || registryService.name;
       price = price || registryService.price;
@@ -217,9 +438,372 @@ export const ProjectWorkbenchView: React.FC<ProjectWorkbenchViewProps> = ({
     });
   };
 
+  const addNodeWithDefaultLink = (entry: CatalogEntry, position: { x: number; y: number }) => {
+    const nodeId = `node-${entry.serviceId}`;
+    const node: NodeGeometry = {
+      id: nodeId,
+      serviceId: entry.serviceId,
+      title: entry.label,
+      x: position.x,
+      y: position.y,
+      width: 200,
+      height: 100,
+      isLocked: false,
+    };
+    const currentLinks = linkStateRef.current;
+    let nextLinks = currentLinks;
+    if (entry.defaultLinkTo === 'sun' && currentLinks) {
+      const defaultKey = `component-${entry.serviceId}`;
+      if (!currentLinks.links.some((link) => link.defaultKey === defaultKey)) {
+        const link = createUserLink({
+          clientId: client.ClientID,
+          fromNodeId: 'core-node',
+          fromPin: 'right',
+          toNodeId: nodeId,
+          toPin: 'left',
+          kind: 'context',
+          mode: 'push',
+          label: `${entry.label} connection`,
+          enabled: true,
+        });
+        nextLinks = {
+          ...currentLinks,
+          links: [...currentLinks.links, { ...link, origin: 'default', defaultKey }],
+          suppressedDefaults: currentLinks.suppressedDefaults.filter((key) => key !== defaultKey),
+        };
+      }
+    } else if (entry.defaultLinkTo === 'sun') {
+      setNotice('The component was added, but its wire could not be created because saved wire data is unavailable.');
+    }
+    commitWorkbenchState([...nodesRef.current, node], nextLinks);
+    return nodeId;
+  };
+
+  const removeWire = (linkId: string) => {
+    updateLinkState((current) => {
+      const link = current.links.find((candidate) => candidate.id === linkId);
+      if (!link) return current;
+      return {
+        ...current,
+        links: current.links.filter((candidate) => candidate.id !== linkId),
+        suppressedDefaults: link.defaultKey && !current.suppressedDefaults.includes(link.defaultKey)
+          ? [...current.suppressedDefaults, link.defaultKey]
+          : current.suppressedDefaults,
+      };
+    });
+    setSelectedWireId(null);
+    setWireMenu(null);
+  };
+
+  const reverseWire = (linkId: string) => {
+    updateLinkState((current) => {
+      const link = current.links.find((candidate) => candidate.id === linkId);
+      if (!link) return current;
+      const fromNode = nodesRef.current.find((node) => node.id === link.toNodeId);
+      const toNode = nodesRef.current.find((node) => node.id === link.fromNodeId);
+      const kinds = allowedKinds(
+        getWireNodeType(link.toNodeId, fromNode),
+        getWireNodeType(link.fromNodeId, toNode),
+      );
+      if (!kinds.includes(link.kind)) {
+        setNotice('This wire cannot be reversed with its current kind.');
+        return current;
+      }
+      if (current.links.some((candidate) =>
+        candidate.id !== linkId
+        && candidate.fromNodeId === link.toNodeId
+        && candidate.toNodeId === link.fromNodeId
+      )) {
+        setNotice('A wire already connects these nodes in that direction.');
+        return current;
+      }
+      return {
+        ...current,
+        links: current.links.map((candidate) => candidate.id === linkId
+          ? { ...candidate, fromNodeId: candidate.toNodeId, fromPin: candidate.toPin, toNodeId: candidate.fromNodeId, toPin: candidate.fromPin }
+          : candidate),
+      };
+    });
+    setWireMenu(null);
+  };
+
+  const updateWire = (linkId: string, updates: Partial<WireEditableFields>) => {
+    updateLinkState((current) => {
+      const link = current.links.find((candidate) => candidate.id === linkId);
+      if (!link) return current;
+      if (updates.kind) {
+        const fromNode = nodesRef.current.find((node) => node.id === link.fromNodeId);
+        const toNode = nodesRef.current.find((node) => node.id === link.toNodeId);
+        const kinds = allowedKinds(
+          getWireNodeType(link.fromNodeId, fromNode),
+          getWireNodeType(link.toNodeId, toNode),
+        );
+        if (!kinds.includes(updates.kind)) {
+          setNotice('That wire kind is not allowed for these node types.');
+          return current;
+        }
+      }
+      return {
+        ...current,
+        links: current.links.map((candidate) => candidate.id === linkId ? { ...candidate, ...updates } : candidate),
+      };
+    });
+    setWireMenu(null);
+  };
+
+  const createWireFromPanel = (input: WireCreateInput): boolean => {
+    const current = linkStateRef.current;
+    if (!current || current.clientId !== client.ClientID) {
+      setNotice('Wire data is unavailable; reload the Solar Workbench before changing wires.');
+      return false;
+    }
+    if (input.fromNodeId === input.toNodeId) {
+      setNotice('A wire cannot connect a node to itself.');
+      return false;
+    }
+    if (current.links.some((link) => link.fromNodeId === input.fromNodeId && link.toNodeId === input.toNodeId)) {
+      setNotice('A wire already connects these nodes in that direction.');
+      return false;
+    }
+    const fromNode = nodesRef.current.find((node) => node.id === input.fromNodeId);
+    const toNode = nodesRef.current.find((node) => node.id === input.toNodeId);
+    const kinds = allowedKinds(
+      getWireNodeType(input.fromNodeId, fromNode),
+      getWireNodeType(input.toNodeId, toNode),
+    );
+    if (!kinds.includes(input.kind)) {
+      setNotice('That wire kind is not allowed for these node types.');
+      return false;
+    }
+
+    const link = createUserLink({
+      clientId: client.ClientID,
+      ...input,
+      label: input.label.trim() || undefined,
+      enabled: true,
+    });
+    commitLinkState({ ...current, links: [...current.links, link] });
+    setSelectedWireId(link.id);
+    setWireMenu(null);
+    setWireKindPicker(null);
+    setNotice('Wire created.');
+    return true;
+  };
+
+  const screenToWorld = (clientX: number, clientY: number) => {
+    const rect = workbenchRef.current?.getBoundingClientRect();
+    if (!rect) return null;
+    const zoom = cameraZoom > 0 ? cameraZoom : 1;
+    return {
+      x: (clientX - rect.left - cameraPan.x) / zoom - rect.width / 2,
+      y: (clientY - rect.top - cameraPan.y) / zoom - rect.height / 2,
+    };
+  };
+
+  const nodePinPoint = (node: NodeGeometry, pin: Link['fromPin']) => {
+    switch (pin) {
+      case 'top': return { x: node.x + node.width / 2, y: node.y };
+      case 'bottom': return { x: node.x + node.width / 2, y: node.y + node.height };
+      case 'left': return { x: node.x, y: node.y + node.height / 2 };
+      case 'right': return { x: node.x + node.width, y: node.y + node.height / 2 };
+    }
+  };
+
+  const findWireDropTarget = (world: { x: number; y: number }) => {
+    const renderNodes = [coreNodeGeometry, ...nodesRef.current];
+    const pins: Link['fromPin'][] = ['top', 'right', 'bottom', 'left'];
+    const zoom = cameraZoom > 0 ? cameraZoom : 1;
+    let nearestPort: { node: NodeGeometry; pin: Link['fromPin']; distance: number } | null = null;
+
+    for (const node of renderNodes) {
+      for (const pin of pins) {
+        const point = nodePinPoint(node, pin);
+        const distance = Math.hypot(world.x - point.x, world.y - point.y);
+        if (!nearestPort || distance < nearestPort.distance) nearestPort = { node, pin, distance };
+      }
+    }
+    if (nearestPort && nearestPort.distance <= 14 / zoom) {
+      return { node: nearestPort.node, pin: nearestPort.pin };
+    }
+
+    const targetNode = renderNodes.find((node) =>
+      world.x >= node.x
+      && world.x <= node.x + node.width
+      && world.y >= node.y
+      && world.y <= node.y + node.height);
+    if (!targetNode) return null;
+
+    const usedPins = new Set<Link['fromPin']>();
+    for (const link of linkStateRef.current?.links || []) {
+      if (link.fromNodeId === targetNode.id) usedPins.add(link.fromPin);
+      if (link.toNodeId === targetNode.id) usedPins.add(link.toPin);
+    }
+    const freePins = pins.filter((pin) => !usedPins.has(pin));
+    if (freePins.length === 0) return null;
+    const pin = freePins.reduce((nearest, candidate) =>
+      Math.hypot(world.x - nodePinPoint(targetNode, candidate).x, world.y - nodePinPoint(targetNode, candidate).y)
+      < Math.hypot(world.x - nodePinPoint(targetNode, nearest).x, world.y - nodePinPoint(targetNode, nearest).y)
+        ? candidate
+        : nearest);
+    return { node: targetNode, pin };
+  };
+
+  const connectPorts = (
+    from: { nodeId: string; pin: Link['fromPin'] },
+    to: { nodeId: string; pin: Link['fromPin'] },
+    pickerPosition?: { x: number; y: number },
+  ) => {
+    if (from.nodeId === to.nodeId) {
+      setNotice('A wire cannot connect a node to itself.');
+      return;
+    }
+    const current = linkStateRef.current;
+    if (!current || current.clientId !== client.ClientID) {
+      setNotice('Wire data is unavailable; reload the Solar Workbench before changing wires.');
+      return;
+    }
+    if (current.links.some((link) => link.fromNodeId === from.nodeId && link.toNodeId === to.nodeId)) {
+      setNotice('A wire already connects these nodes in that direction.');
+      return;
+    }
+
+    const renderNodes = [coreNodeGeometry, ...nodesRef.current];
+    const fromNode = renderNodes.find((node) => node.id === from.nodeId);
+    const toNode = renderNodes.find((node) => node.id === to.nodeId);
+    const kinds = allowedKinds(
+      getWireNodeType(from.nodeId, fromNode),
+      getWireNodeType(to.nodeId, toNode),
+    );
+    if (kinds.length === 0) {
+      setNotice('These node types cannot be connected.');
+      return;
+    }
+
+    const input: WireCreateInput = {
+      fromNodeId: from.nodeId,
+      fromPin: from.pin,
+      toNodeId: to.nodeId,
+      toPin: to.pin,
+      kind: kinds.includes('context') ? 'context' : kinds[0],
+      mode: 'push',
+      label: '',
+    };
+    if (pickerPosition && kinds.length > 1) {
+      setWireKindPicker({ ...pickerPosition, input, kinds });
+      setNotice('Choose a wire kind to finish connecting these nodes.');
+      return;
+    }
+    createWireFromPanel(input);
+  };
+
+  const handlePortPointerDown = (
+    event: React.PointerEvent<HTMLDivElement>,
+    nodeId: string,
+    pin: Link['fromPin'],
+  ) => {
+    if (event.button !== 0 || portDragRef.current) return;
+    const startWorld = screenToWorld(event.clientX, event.clientY);
+    if (!startWorld) return;
+    event.preventDefault();
+    setSelectedPort(null);
+    setWireKindPicker(null);
+    setWireMenu(null);
+    setCanvasMenu(null);
+    const initial: PortDragState = {
+      fromNodeId: nodeId,
+      fromPin: pin,
+      cursorWorld: startWorld,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      moved: false,
+    };
+    portDragRef.current = initial;
+    setPortDrag(initial);
+
+    const cleanup = () => {
+      window.removeEventListener('pointermove', onPointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      if (portDragCleanupRef.current === cleanup) portDragCleanupRef.current = null;
+    };
+    const onPointerMove = (pointerEvent: PointerEvent) => {
+      const current = portDragRef.current;
+      const cursorWorld = screenToWorld(pointerEvent.clientX, pointerEvent.clientY);
+      if (!current || !cursorWorld) return;
+      const moved = current.moved
+        || Math.hypot(pointerEvent.clientX - current.startClientX, pointerEvent.clientY - current.startClientY) >= 4;
+      const next = { ...current, cursorWorld, moved };
+      portDragRef.current = next;
+      setPortDrag(next);
+    };
+    const onPointerUp = (pointerEvent: PointerEvent) => {
+      const current = portDragRef.current;
+      const world = screenToWorld(pointerEvent.clientX, pointerEvent.clientY);
+      cleanup();
+      portDragRef.current = null;
+      setPortDrag(null);
+      if (!current?.moved) return;
+
+      suppressPortClickRef.current = true;
+      window.setTimeout(() => { suppressPortClickRef.current = false; }, 0);
+      if (!world) {
+        setNotice('Wire creation was cancelled because the canvas position is unavailable.');
+        return;
+      }
+      const target = findWireDropTarget(world);
+      if (!target) {
+        const isOverNode = [coreNodeGeometry, ...nodesRef.current].some((node) =>
+          world.x >= node.x
+          && world.x <= node.x + node.width
+          && world.y >= node.y
+          && world.y <= node.y + node.height);
+        if (!isOverNode) {
+          setCanvasMenu({
+            x: pointerEvent.clientX,
+            y: pointerEvent.clientY,
+            connectFrom: { nodeId: current.fromNodeId, pin: current.fromPin },
+          });
+          return;
+        }
+        setNotice('Drop the wire on a connection port or node.');
+        return;
+      }
+      connectPorts(
+        { nodeId: current.fromNodeId, pin: current.fromPin },
+        { nodeId: target.node.id, pin: target.pin },
+        { x: pointerEvent.clientX, y: pointerEvent.clientY },
+      );
+    };
+
+    window.addEventListener('pointermove', onPointerMove);
+    window.addEventListener('pointerup', onPointerUp);
+    portDragCleanupRef.current = cleanup;
+  };
+
+  const handlePortClick = (nodeId: string, pin: Link['fromPin']) => {
+    if (suppressPortClickRef.current) return;
+    if (!selectedPort) {
+      setSelectedPort({ nodeId, pin });
+      setNotice('Select a target connection port to complete the wire.');
+      return;
+    }
+    const from = selectedPort;
+    setSelectedPort(null);
+    if (from.nodeId === nodeId) {
+      setNotice('A wire cannot connect a node to itself.');
+      return;
+    }
+    connectPorts(from, { nodeId, pin });
+  };
+
   const handleConfirmDrop = async () => {
     if (!pendingDrop) return;
     const { serviceId, name, price, tasksToInject, targetClientId, snapX, snapY } = pendingDrop;
+    const entry = CATALOG.find((candidate) => candidate.serviceId === serviceId);
+    if (!entry) {
+      setNotice('That service is no longer available in the catalog.');
+      setPendingDrop(null);
+      return;
+    }
 
     const updatedComponents = [...(client.activeComponents || []), serviceId];
     const updatedContractValue = Number(client.ContractValue || 0) + Number(price);
@@ -230,30 +814,19 @@ export const ProjectWorkbenchView: React.FC<ProjectWorkbenchViewProps> = ({
       ContractValue: updatedContractValue,
     });
 
-    const newNodeId = `node-${serviceId}-${Date.now()}`;
-
-    setNodes((prev) => [
-      ...prev,
-      {
-        id: newNodeId,
-        serviceId,
-        title: name,
-        x: snapX,
-        y: snapY,
-        width: 200,
-        height: 100,
-        isLocked: false,
-      },
-    ]);
-
-    setEdges((prev) => [
-      ...prev,
-      {
-        id: `edge-core-${newNodeId}`,
-        sourceId: 'core-node',
-        targetId: newNodeId,
-      },
-    ]);
+    addNodeWithDefaultLink(entry, { x: snapX, y: snapY });
+    if (pendingDrop.connectFrom) {
+      const target = findWireDropTarget({ x: snapX + 100, y: snapY + 50 });
+      if (target) {
+        connectPorts(
+          pendingDrop.connectFrom,
+          { nodeId: target.node.id, pin: target.pin },
+          pendingDrop.connectAt,
+        );
+      } else {
+        setNotice('The node was added, but no free connection port was available.');
+      }
+    }
 
     setPendingDrop(null);
 
@@ -264,62 +837,403 @@ export const ProjectWorkbenchView: React.FC<ProjectWorkbenchViewProps> = ({
     }
   };
 
-  const handleToggleComponent = (componentId: string) => {
-    const existing = client.activeComponents || [];
-    const isDetaching = existing.includes(componentId);
-    const updatedComponents = isDetaching
-      ? existing.filter((c) => c !== componentId)
-      : [...existing, componentId];
-
-    const service = SERVICE_REGISTRY.find((s) => s.id === componentId);
-    const priceDelta = service ? service.price : 0;
-    const newContractValue = isDetaching
-      ? Math.max(0, (client.ContractValue || 0) - priceDelta)
-      : (client.ContractValue || 0) + priceDelta;
-
-    onUpdateClient?.({
-      ...client,
-      activeComponents: updatedComponents,
-      ContractValue: newContractValue,
-    });
-
-    if (isDetaching) {
-      setNodes((prev) => prev.filter((n) => n.serviceId !== componentId));
-      setEdges((prev) => prev.filter((e) => !e.targetId.includes(componentId)));
-    } else if (service) {
-      const angle = (nodes.length * (2 * Math.PI)) / 8;
-      const snapX = Math.round(sunPos.x + Math.cos(angle) * 320 - 100);
-      const snapY = Math.round(sunPos.y + Math.sin(angle) * 320 - 50);
-      const newNodeId = `node-${componentId}-${Date.now()}`;
-
-      setNodes((prev) => [
-        ...prev,
-        {
-          id: newNodeId,
-          serviceId: componentId,
-          title: service.name,
-          x: snapX,
-          y: snapY,
-          width: 200,
-          height: 100,
-          isLocked: false,
-        },
-      ]);
-      setEdges((prev) => [
-        ...prev,
-        {
-          id: `edge-core-${newNodeId}`,
-          sourceId: 'core-node',
-          targetId: newNodeId,
-        },
-      ]);
+  const handleRemoveComponentFromCanvas = (componentId: string) => {
+    const nextNodes = nodesRef.current.filter((node) => node.serviceId !== componentId);
+    const currentLinks = linkStateRef.current;
+    if (!currentLinks) {
+      commitWorkbenchState(nextNodes, null);
+      setNotice('Removed from canvas. Saved wire data could not be updated; reload the Solar Workbench before changing wires.');
+      return;
     }
+    const removedLinks = currentLinks.links.filter((link) =>
+      link.fromNodeId === `node-${componentId}` || link.toNodeId === `node-${componentId}`);
+    const removedDefaults = removedLinks
+      .map((link) => link.defaultKey)
+      .filter((key): key is string => Boolean(key));
+    const nextLinks: LinkState = {
+      ...currentLinks,
+      links: currentLinks.links.filter((link) => !removedLinks.includes(link)),
+      suppressedDefaults: [...new Set([...currentLinks.suppressedDefaults, ...removedDefaults])],
+    };
+    commitWorkbenchState(nextNodes, nextLinks);
+    setNotice('Removed from canvas. Ledger and Google Tasks were not changed.');
   };
 
   const allRenderNodes = [coreNodeGeometry, ...nodes];
+  const activeLinks = linkState?.clientId === client.ClientID ? linkState.links : [];
+
+  const getNodeDepartment = (nodeId: string): Department => {
+    if (nodeId === 'core-node') return 'core';
+    const node = allRenderNodes.find((candidate) => candidate.id === nodeId);
+    if (node?.serviceId) return CATALOG.find((entry) => entry.serviceId === node.serviceId)?.department || 'core';
+    const fixedDepartments: Record<string, Department> = {
+      'node-pamela': 'pamela',
+      'node-oracle': 'oracle',
+      'node-dolores': 'dolores',
+      'node-vala': 'vala',
+      'node-daisy': 'daisy',
+    };
+    return fixedDepartments[nodeId] || 'core';
+  };
+
+  const pinPoint = nodePinPoint;
+  const draggedFromNode = portDrag
+    ? allRenderNodes.find((node) => node.id === portDrag.fromNodeId)
+    : undefined;
+  const dragPreviewPath = portDrag?.moved && draggedFromNode
+    ? (() => {
+      const start = pinPoint(draggedFromNode, portDrag.fromPin);
+      const end = portDrag.cursorWorld;
+      const x1 = 2000 + start.x;
+      const y1 = 2000 + start.y;
+      const x2 = 2000 + end.x;
+      const y2 = 2000 + end.y;
+      const bend = Math.max(50, Math.abs(x2 - x1) * 0.5);
+      return `M ${x1} ${y1} C ${x1 + bend} ${y1}, ${x2 - bend} ${y2}, ${x2} ${y2}`;
+    })()
+    : null;
+  const portTargetPreview: ConnectionTargetPreview | null = (() => {
+    if (!portDrag?.moved) return null;
+    const target = findWireDropTarget(portDrag.cursorWorld);
+    if (!target) return null;
+    if (target.node.id === portDrag.fromNodeId) {
+      return { nodeId: target.node.id, pin: target.pin, valid: false, reason: 'A wire cannot connect a node to itself.' };
+    }
+    if (activeLinks.some((link) =>
+      link.fromNodeId === portDrag.fromNodeId && link.toNodeId === target.node.id)) {
+      return {
+        nodeId: target.node.id,
+        pin: target.pin,
+        valid: false,
+        reason: 'A wire already connects these nodes in that direction.',
+      };
+    }
+    const sourceNode = allRenderNodes.find((node) => node.id === portDrag.fromNodeId);
+    if (!allowedKinds(
+      getWireNodeType(portDrag.fromNodeId, sourceNode),
+      getWireNodeType(target.node.id, target.node),
+    ).length) {
+      return { nodeId: target.node.id, pin: target.pin, valid: false, reason: 'These node types cannot be connected.' };
+    }
+    return { nodeId: target.node.id, pin: target.pin, valid: true };
+  })();
+  const animatedWireIds = new Set(activeWireIds.slice(0, MAX_ANIMATED));
+  if (selectedWireId && !animatedWireIds.has(selectedWireId)) {
+    if (animatedWireIds.size >= MAX_ANIMATED) {
+      const lastActiveId = [...animatedWireIds].pop();
+      if (lastActiveId) animatedWireIds.delete(lastActiveId);
+    }
+    animatedWireIds.add(selectedWireId);
+  }
+
+  const handleCanvasContextMenu = (event: React.MouseEvent) => {
+    if ((event.target as HTMLElement).closest('[data-node-id], [data-wire-id], button, input')) return;
+    event.preventDefault();
+    setWireMenu(null);
+    setWireKindPicker(null);
+    setCanvasMenu({ x: event.clientX, y: event.clientY });
+  };
+
+  const downloadWireExport = () => {
+    const current = linkStateRef.current;
+    if (!current) {
+      setNotice('Wire data is unavailable for export.');
+      return;
+    }
+    const blob = new Blob([JSON.stringify(exportLinkState(current), null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `szs-wires-${client.ClientID}.json`;
+    anchor.style.display = 'none';
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setCanvasMenu(null);
+  };
+
+  const handleWireImport = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+    try {
+      const current = linkStateRef.current;
+      if (!current) throw new Error('Wire data is unavailable for import.');
+      const validNodeIds = new Set(allRenderNodes.map((node) => node.id));
+      const imported = parseLinkExport(await file.text(), client.ClientID, validNodeIds);
+      commitLinkState(imported);
+      setCanvasMenu(null);
+      setNotice('Wire data imported.');
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : 'Unable to import wire data.');
+    }
+  };
+
+  const requestCatalogAdd = (
+    entry: CatalogEntry,
+    connectFrom?: { nodeId: string; pin: Link['fromPin'] },
+  ) => {
+    if (client.activeComponents?.includes(entry.serviceId) || nodes.some((node) => node.serviceId === entry.serviceId)) {
+      setNotice(`${entry.label} is already installed on this canvas.`);
+      return;
+    }
+    const rect = workbenchRef.current?.getBoundingClientRect();
+    if (!rect) {
+      setNotice('Unable to place the catalog node because the workbench is not available.');
+      return;
+    }
+    const screenX = canvasMenu?.x ?? rect.left + rect.width / 2;
+    const screenY = canvasMenu?.y ?? rect.top + rect.height / 2;
+    const world = screenToWorld(screenX, screenY);
+    if (!world) {
+      setNotice('Unable to place the catalog node because the canvas position is unavailable.');
+      return;
+    }
+    setPendingDrop({
+      serviceId: entry.serviceId,
+      name: entry.label,
+      price: Number(entry.price || 0),
+      tasksToInject: entry.tasksToInject || [],
+      targetClientId: client.ClientID,
+      snapX: Math.round(world.x - 100),
+      snapY: Math.round(world.y - 50),
+      connectFrom,
+      connectAt: connectFrom ? { x: screenX, y: screenY } : undefined,
+    });
+    setCanvasMenu(null);
+  };
+
+  const wireMenuItems = (linkId: string): MenuItem[] => {
+    const link = activeLinks.find((candidate) => candidate.id === linkId);
+    if (!link) return [];
+    const fromNode = nodesRef.current.find((node) => node.id === link.fromNodeId);
+    const toNode = nodesRef.current.find((node) => node.id === link.toNodeId);
+    const kinds = allowedKinds(
+      getWireNodeType(link.fromNodeId, fromNode),
+      getWireNodeType(link.toNodeId, toNode),
+    );
+    return [
+      { id: 'delete', label: 'Delete wire', danger: true, shortcut: 'Del', onSelect: () => removeWire(linkId) },
+      {
+        id: 'edit',
+        label: 'Edit',
+        submenu: [
+          {
+            id: 'label',
+            label: 'Edit label',
+            onSelect: () => {
+              const label = window.prompt('Wire label', link.label || '');
+              if (label !== null) updateWire(linkId, { label });
+            },
+          },
+          {
+            id: 'kind',
+            label: 'Change kind',
+            submenu: kinds.map((kind) => ({
+              id: `kind-${kind}`,
+              label: kind,
+              onSelect: () => updateWire(linkId, { kind }),
+            })),
+          },
+          {
+            id: 'mode',
+            label: 'Change flow',
+            submenu: (['push', 'pull', 'sync'] as const).map((mode) => ({
+              id: `mode-${mode}`,
+              label: mode,
+              onSelect: () => updateWire(linkId, { mode }),
+            })),
+          },
+        ],
+      },
+      { id: 'reverse', label: 'Reverse direction', onSelect: () => reverseWire(linkId) },
+      { id: 'toggle', label: link.enabled ? 'Disable wire' : 'Enable wire', onSelect: () => updateWire(linkId, { enabled: !link.enabled }) },
+    ];
+  };
+
+  const connectFrom = canvasMenu?.connectFrom;
+  const connectFromNode = connectFrom
+    ? allRenderNodes.find((node) => node.id === connectFrom.nodeId)
+    : undefined;
+  const connectableCatalog = connectFrom
+    ? CATALOG.filter((entry) =>
+      allowedKinds(getWireNodeType(connectFrom.nodeId, connectFromNode), entry.nodeType).length > 0)
+    : [];
+  const canvasMenuItems: MenuItem[] = [
+    ...(connectFrom ? [{
+      id: 'add-node-connect',
+      label: 'Add node here and connect',
+      submenu: connectableCatalog.map((entry) => ({
+        id: `add-connect-${entry.serviceId}`,
+        label: entry.label,
+        disabled: client.activeComponents?.includes(entry.serviceId) || nodes.some((node) => node.serviceId === entry.serviceId),
+        disabledReason: 'This component is already installed on the canvas.',
+        onSelect: () => requestCatalogAdd(entry, connectFrom),
+      })),
+    }] : []),
+    {
+      id: 'add-node',
+      label: 'Add node',
+      submenu: CATALOG.map((entry) => ({
+        id: `add-${entry.serviceId}`,
+        label: entry.label,
+        disabled: client.activeComponents?.includes(entry.serviceId) || nodes.some((node) => node.serviceId === entry.serviceId),
+        disabledReason: 'This component is already installed on the canvas.',
+        onSelect: () => requestCatalogAdd(entry),
+      })),
+    },
+    {
+      id: 'wires',
+      label: 'Wires',
+      submenu: [
+        { id: 'export', label: 'Export wires', onSelect: downloadWireExport },
+        { id: 'import', label: 'Import wires', onSelect: () => importInputRef.current?.click() },
+      ],
+    },
+    {
+      id: 'arrange',
+      label: 'Arrange',
+      submenu: [
+        {
+          id: 'auto-arrange',
+          label: 'Arrange satellites around Sun',
+          onSelect: () => commitWorkbenchState(nodesRef.current.map((node, index) => {
+            const angle = (index / Math.max(nodesRef.current.length, 1)) * Math.PI * 2;
+            return {
+              ...node,
+              x: Math.round(sunPos.x + Math.cos(angle) * 460 - node.width / 2),
+              y: Math.round(sunPos.y + Math.sin(angle) * 360 - node.height / 2),
+            };
+          }), linkStateRef.current),
+        },
+        {
+          id: 'lock-all',
+          label: 'Lock all satellites',
+          onSelect: () => commitWorkbenchState(
+            nodesRef.current.map((node) => ({ ...node, isLocked: true })),
+            linkStateRef.current,
+          ),
+        },
+        {
+          id: 'unlock-all',
+          label: 'Unlock all satellites',
+          onSelect: () => commitWorkbenchState(
+            nodesRef.current.map((node) => ({ ...node, isLocked: false })),
+            linkStateRef.current,
+          ),
+        },
+      ],
+    },
+    { id: 'recenter', label: 'Recenter Sun', onSelect: () => setSunPos({ x: 0, y: 0 }) },
+    {
+      id: 'undo',
+      label: 'Undo',
+      shortcut: 'Ctrl+Z',
+      disabled: historyRef.current.past.length === 0,
+      disabledReason: 'There is no workbench change to undo.',
+      onSelect: undoWorkbenchChange,
+    },
+    {
+      id: 'redo',
+      label: 'Redo',
+      shortcut: 'Ctrl+Shift+Z',
+      disabled: historyRef.current.future.length === 0,
+      disabledReason: 'There is no workbench change to redo.',
+      onSelect: redoWorkbenchChange,
+    },
+  ];
+
+  const sunMenuItems: MenuItem[] = [
+    {
+      id: 'lock',
+      label: sunLocked ? 'Unlock Sun' : 'Lock Sun',
+      onSelect: () => setSunLocked((locked) => !locked),
+    },
+    { id: 'recenter', label: 'Recenter Sun', onSelect: () => setSunPos({ x: 0, y: 0 }) },
+    {
+      id: 'connect',
+      label: 'Connect to…',
+      onSelect: () => {
+        setSelectedPort({ nodeId: 'core-node', pin: 'right' });
+        setNotice('Select a target connection port to complete the wire.');
+      },
+    },
+    {
+      id: 'delete',
+      label: 'Delete',
+      disabled: true,
+      disabledReason: 'The core deliverable cannot be deleted.',
+    },
+  ];
+
+  useEffect(() => {
+    wireActionsRef.current = {
+      create: createWireFromPanel,
+      select: (linkId) => {
+        setSelectedWireId(linkId);
+        setWireMenu(null);
+      },
+      update: updateWire,
+      reverse: reverseWire,
+      remove: removeWire,
+    };
+  });
+
+  useEffect(() => {
+    if (!linkState || linkState.clientId !== client.ClientID) {
+      onWirePanelChange?.(null);
+      return;
+    }
+
+    onWirePanelChange?.({
+      clientId: client.ClientID,
+      clientName: client.Company_Name,
+      nodes: [
+        { id: 'core-node', label: 'SUN // CORE', type: 'core' },
+        ...nodes.map((node) => ({
+          id: node.id,
+          label: node.title || node.id,
+          type: getWireNodeType(node.id, node),
+        })),
+      ],
+      links: linkState.links,
+      selectedWireId,
+      contextMenuOpen: Boolean(wireMenu),
+    });
+  }, [
+    client.ClientID,
+    client.Company_Name,
+    linkState,
+    nodes,
+    selectedWireId,
+    wireMenu,
+    onWirePanelChange,
+  ]);
+
+  useEffect(() => {
+    onWirePanelActionsChange?.({
+      create: (input) => wireActionsRef.current?.create(input) ?? false,
+      select: (linkId) => wireActionsRef.current?.select(linkId),
+      update: (linkId, updates) => wireActionsRef.current?.update(linkId, updates),
+      reverse: (linkId) => wireActionsRef.current?.reverse(linkId),
+      remove: (linkId) => wireActionsRef.current?.remove(linkId),
+    });
+    return () => onWirePanelActionsChange?.(null);
+  }, [onWirePanelActionsChange]);
+
+  useEffect(() => () => onWirePanelChange?.(null), [onWirePanelChange]);
 
   return (
     <div
+      ref={workbenchRef}
+      data-canvas-bg="true"
+      onClick={(event) => {
+        if ((event.target as HTMLElement).closest('[data-node-id], [data-wire-id], button, input')) return;
+        setSelectedNodeId(null);
+        setSelectedWireId(null);
+        setSelectedPort(null);
+      }}
       onDragOver={(e) => {
         e.preventDefault();
         e.dataTransfer.dropEffect = 'copy';
@@ -327,7 +1241,8 @@ export const ProjectWorkbenchView: React.FC<ProjectWorkbenchViewProps> = ({
       }}
       onDragLeave={() => setIsDropActive(false)}
       onDrop={handleCanvasDrop}
-      className={`relative w-full h-full bg-[#020500] text-[#DDFBD0] overflow-hidden select-none flex flex-col font-mono transition-colors duration-200 ${
+      onContextMenu={handleCanvasContextMenu}
+      className={`pointer-events-auto relative w-full h-full bg-[#020500] text-[#DDFBD0] overflow-hidden select-none flex flex-col font-mono transition-colors duration-200 ${
         isDropActive ? 'bg-[#04100c]' : ''
       }`}
     >
@@ -345,7 +1260,7 @@ export const ProjectWorkbenchView: React.FC<ProjectWorkbenchViewProps> = ({
       )}
 
       {/* Top Breadcrumb Overlay (Fixed top-left) */}
-      <div className="absolute top-4 left-6 z-40 flex items-center gap-3 bg-[#020500]/95 border border-[#E0CA3C] rounded-xl px-4 py-2 shadow-[0_0_24px_rgba(224,202,60,0.3)]">
+      <div className="pointer-events-auto absolute top-4 left-6 z-40 flex items-center gap-3 bg-[#020500]/95 border border-[#E0CA3C] rounded-xl px-4 py-2 shadow-[0_0_24px_rgba(224,202,60,0.3)]">
         <button
           type="button"
           onClick={onExit}
@@ -374,30 +1289,34 @@ export const ProjectWorkbenchView: React.FC<ProjectWorkbenchViewProps> = ({
       </div>
 
       {/* Top Right Mode Switcher */}
-      <div className="absolute top-4 right-6 z-40 flex gap-2">
+      <div className="pointer-events-auto absolute top-28 right-6 z-40 flex gap-2">
         <button
           type="button"
-          onClick={() => setActiveTab('SATELLITES')}
-          className={`px-3 py-1.5 rounded-lg border font-bold text-xs transition-all cursor-pointer ${
-            activeTab === 'SATELLITES'
-              ? 'border-[#E0CA3C] bg-[#E0CA3C]/20 text-[#E0CA3C] shadow-[0_0_12px_rgba(224,202,60,0.3)]'
-              : 'border-[#086375] bg-[#020500]/80 text-[#DDFBD0]/70 hover:text-white'
-          }`}
+          disabled={historyRef.current.past.length === 0}
+          onClick={undoWorkbenchChange}
+          className="px-2 py-1.5 rounded-lg border border-[#086375] bg-[#020500]/90 text-[#DDFBD0] disabled:opacity-40 text-[0.62rem] font-bold"
         >
-          <i className="fa-solid fa-satellite mr-1.5 text-xs" />
-          SATELLITE ORBITS ({nodes.length})
+          UNDO
         </button>
         <button
           type="button"
-          onClick={() => setActiveTab('SERVICES')}
-          className={`px-3 py-1.5 rounded-lg border font-bold text-xs transition-all cursor-pointer ${
-            activeTab === 'SERVICES'
-              ? 'border-[#E0CA3C] bg-[#E0CA3C]/20 text-[#E0CA3C] shadow-[0_0_12px_rgba(224,202,60,0.3)]'
-              : 'border-[#086375] bg-[#020500]/80 text-[#DDFBD0]/70 hover:text-white'
-          }`}
+          disabled={historyRef.current.future.length === 0}
+          onClick={redoWorkbenchChange}
+          className="px-2 py-1.5 rounded-lg border border-[#086375] bg-[#020500]/90 text-[#DDFBD0] disabled:opacity-40 text-[0.62rem] font-bold"
         >
-          <i className="fa-solid fa-puzzle-piece mr-1.5 text-xs text-[#E0CA3C]" />
-          ECS SERVICE CATALOG
+          REDO
+        </button>
+        <button
+          type="button"
+          title="Workbench view and wire controls"
+          onClick={(event) => {
+            const rect = event.currentTarget.getBoundingClientRect();
+            setCanvasMenu((current) => current ? null : { x: rect.left, y: rect.bottom + 4 });
+          }}
+          className="px-3 py-1.5 rounded-lg border border-[#E0CA3C] bg-[#E0CA3C]/20 text-[#E0CA3C] font-bold text-xs"
+        >
+          <i className="fa-solid fa-satellite mr-1.5 text-xs" />
+          SATELLITES ({nodes.length}) ▾
         </button>
       </div>
 
@@ -440,39 +1359,177 @@ export const ProjectWorkbenchView: React.FC<ProjectWorkbenchViewProps> = ({
             className="pointer-events-none overflow-visible z-10"
             xmlns="http://www.w3.org/2000/svg"
           >
-            {edges.map((edge) => {
-              const src = allRenderNodes.find((n) => n.id === edge.sourceId);
-              const dst = allRenderNodes.find((n) => n.id === edge.targetId);
+            <defs>
+              {activeLinks.map((link, index) => {
+                const color = DEPT_COLOR[getNodeDepartment(link.fromNodeId)];
+                return (
+                  <marker
+                    key={link.id}
+                    id={`wire-arrow-${index}`}
+                    markerWidth="8"
+                    markerHeight="8"
+                    refX="7"
+                    refY="4"
+                    orient="auto-start-reverse"
+                    markerUnits="strokeWidth"
+                  >
+                    <path
+                      d="M 0 0 L 8 4 L 0 8"
+                      fill={link.mode === 'pull' ? 'none' : color}
+                      stroke={color}
+                      strokeWidth="1.25"
+                    />
+                  </marker>
+                );
+              })}
+            </defs>
+            {activeLinks.map((link, index) => {
+              const src = allRenderNodes.find((node) => node.id === link.fromNodeId);
+              const dst = allRenderNodes.find((node) => node.id === link.toNodeId);
               if (!src || !dst) return null;
-
-              // Origin offset is (2000, 2000)
-              const ox = 2000;
-              const oy = 2000;
-
-              const x1 = ox + src.x + src.width / 2;
-              const y1 = oy + src.y + src.height / 2;
-              const x2 = ox + dst.x + dst.width / 2;
-              const y2 = oy + dst.y + dst.height / 2;
-              const dx = (x2 - x1) * 0.5;
-
-              const path = `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
+              const start = pinPoint(src, link.fromPin);
+              const end = pinPoint(dst, link.toPin);
+              const x1 = 2000 + start.x;
+              const y1 = 2000 + start.y;
+              const x2 = 2000 + end.x;
+              const y2 = 2000 + end.y;
+              const distance = Math.max(40, Math.hypot(x2 - x1, y2 - y1) * 0.4);
+              const fromNormal = PIN_NORMALS[link.fromPin];
+              const toNormal = PIN_NORMALS[link.toPin];
+              const path = `M ${x1} ${y1} C ${x1 + fromNormal.x * distance} ${y1 + fromNormal.y * distance}, ${x2 + toNormal.x * distance} ${y2 + toNormal.y * distance}, ${x2} ${y2}`;
+              const color = DEPT_COLOR[getNodeDepartment(link.fromNodeId)];
+              const style = KIND_STYLE[link.kind];
+              const isSelected = selectedWireId === link.id;
+              const isActive = activeWireIds.includes(link.id);
+              const isConnectedToSelectedNode = !selectedNodeId
+                || link.fromNodeId === selectedNodeId
+                || link.toNodeId === selectedNodeId;
+              const opacity = (link.enabled ? 0.9 : 0.3)
+                * (selectedNodeId && !isConnectedToSelectedNode ? 0.12 : 1);
+              const glyph = style.glyph === 'lock' ? '▣' : style.glyph === 'diamond' ? '◆' : '•';
+              const pathId = `wire-path-${index}`;
 
               return (
-                <g key={edge.id}>
-                  <path d={path} stroke="#086375" strokeWidth="2" strokeDasharray="4 2" fill="none" opacity="0.6" />
-                  <path d={path} stroke="#E0CA3C" strokeWidth="2" strokeDasharray="6 120" strokeDashoffset="0" fill="none">
-                    <animate attributeName="stroke-dashoffset" values="126;0" dur="2s" repeatCount="indefinite" />
-                  </path>
+                <g
+                  key={link.id}
+                  data-wire-id={link.id}
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    setSelectedWireId(link.id);
+                    setCanvasMenu(null);
+                  }}
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setSelectedWireId(link.id);
+                    setWireMenu({ x: event.clientX, y: event.clientY, linkId: link.id });
+                  }}
+                >
+                  <path
+                    id={pathId}
+                    d={path}
+                    stroke={color}
+                    strokeWidth={isSelected ? style.width + 1 : style.width}
+                    strokeDasharray={style.dash || (link.enabled ? undefined : '3 5')}
+                    fill="none"
+                    opacity={opacity}
+                    markerEnd={`url(#wire-arrow-${index})`}
+                    markerStart={link.mode === 'sync' ? `url(#wire-arrow-${index})` : undefined}
+                    pointerEvents="none"
+                  />
+                  <path
+                    d={path}
+                    stroke="transparent"
+                    strokeWidth="16"
+                    fill="none"
+                    pointerEvents="stroke"
+                    className="cursor-pointer"
+                  />
+                  {!prefersReducedMotion && animatedWireIds.has(link.id) && (
+                    <g aria-hidden="true" pointerEvents="none">
+                      {[0, 0.66, 1.33].map((delay) => (
+                        <g key={delay}>
+                          <path
+                            d="M-4,-4 L2,0 L-4,4"
+                            fill={link.mode === 'pull' ? 'none' : color}
+                            stroke={color}
+                          />
+                          <animateMotion
+                            dur="2s"
+                            begin={`${delay}s`}
+                            repeatCount="indefinite"
+                            rotate="auto"
+                          >
+                            <mpath href={`#${pathId}`} />
+                          </animateMotion>
+                        </g>
+                      ))}
+                      {link.mode === 'sync' && [0, 0.66, 1.33].map((delay) => (
+                        <g key={`reverse-${delay}`}>
+                          <path
+                            d="M-4,-4 L2,0 L-4,4"
+                            fill={link.mode === 'pull' ? 'none' : color}
+                            stroke={color}
+                          />
+                          <animateMotion
+                            dur="2s"
+                            begin={`${delay}s`}
+                            repeatCount="indefinite"
+                            rotate="auto"
+                            keyPoints="1;0"
+                            keyTimes="0;1"
+                            calcMode="linear"
+                          >
+                            <mpath href={`#${pathId}`} />
+                          </animateMotion>
+                        </g>
+                      ))}
+                    </g>
+                  )}
+                  {(isSelected || (prefersReducedMotion && isActive)) && (
+                    <text
+                      x={(x1 + x2) / 2}
+                      y={(y1 + y2) / 2 - 8}
+                      textAnchor="middle"
+                      fill={color}
+                      fontSize="16"
+                      pointerEvents="none"
+                    >
+                      {glyph}{link.label ? ` ${link.label}` : ''}
+                    </text>
+                  )}
                 </g>
               );
             })}
+            {dragPreviewPath && draggedFromNode && (
+              <path
+                d={dragPreviewPath}
+                stroke={DEPT_COLOR[getNodeDepartment(draggedFromNode.id)]}
+                strokeWidth="2"
+                strokeDasharray="6 6"
+                fill="none"
+                opacity="0.9"
+              />
+            )}
           </svg>
 
           {/* ── STEP 2: CENTRAL SUN CORE NODE (DRAGGABLE, LOCKABLE, STABLE KEY) ── */}
           <div
+            data-node-id="core-node"
             key={`sun-${client.ClientID}`}
             onPointerDown={handleSunPointerDown}
             onDoubleClick={handleSunDoubleClick}
+            onContextMenu={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              setSunMenu({ x: event.clientX, y: event.clientY });
+            }}
+            onClick={(event) => {
+              if ((event.target as HTMLElement).closest('button, [data-port-id]')) return;
+              setSelectedNodeId('core-node');
+              setSelectedWireId(null);
+              setCanvasMenu(null);
+            }}
             style={{
               position: 'absolute',
               top: `${coreNodeGeometry.y}px`,
@@ -481,10 +1538,42 @@ export const ProjectWorkbenchView: React.FC<ProjectWorkbenchViewProps> = ({
               height: `${coreNodeGeometry.height}px`,
             }}
             className={`z-20 pointer-events-auto rounded-2xl border-2 border-[#E0CA3C] bg-gradient-to-br from-[#0d1f18] via-[#05130e] to-[#020500] p-5 shadow-[0_0_50px_rgba(224,202,60,0.35)] flex flex-col select-none transition-shadow ${
-              interactionMode === 'lock' ? 'cursor-default' : 'cursor-move hover:shadow-[0_0_60px_rgba(224,202,60,0.5)]'
+              interactionMode === 'lock' || sunLocked ? 'cursor-default' : 'cursor-move hover:shadow-[0_0_60px_rgba(224,202,60,0.5)]'
             }`}
             title="Core Deliverable Node - Click and drag to reposition Sun (Double-click to reset)"
           >
+            <ConnectionPort
+              id="core-node-top"
+              nodeId="core-node"
+              position="top"
+              targetPreview={portTargetPreview}
+              onPortClick={() => handlePortClick('core-node', 'top')}
+              onPortPointerDown={(event) => handlePortPointerDown(event, 'core-node', 'top')}
+            />
+            <ConnectionPort
+              id="core-node-bottom"
+              nodeId="core-node"
+              position="bottom"
+              targetPreview={portTargetPreview}
+              onPortClick={() => handlePortClick('core-node', 'bottom')}
+              onPortPointerDown={(event) => handlePortPointerDown(event, 'core-node', 'bottom')}
+            />
+            <ConnectionPort
+              id="core-node-left"
+              nodeId="core-node"
+              position="left"
+              targetPreview={portTargetPreview}
+              onPortClick={() => handlePortClick('core-node', 'left')}
+              onPortPointerDown={(event) => handlePortPointerDown(event, 'core-node', 'left')}
+            />
+            <ConnectionPort
+              id="core-node-right"
+              nodeId="core-node"
+              position="right"
+              targetPreview={portTargetPreview}
+              onPortClick={() => handlePortClick('core-node', 'right')}
+              onPortPointerDown={(event) => handlePortPointerDown(event, 'core-node', 'right')}
+            />
             {/* Core Header */}
             <div className="flex items-center justify-between border-b border-[#086375]/60 pb-3 mb-3">
               <div>
@@ -559,7 +1648,7 @@ export const ProjectWorkbenchView: React.FC<ProjectWorkbenchViewProps> = ({
           </div>
 
           {/* ── SATELLITE NODES ── */}
-          {activeTab === 'SATELLITES' && showNonStructural && (
+          {showNonStructural && (
             <>
               {nodes.map((node) => (
                 <ResizableNodeContainer
@@ -570,6 +1659,17 @@ export const ProjectWorkbenchView: React.FC<ProjectWorkbenchViewProps> = ({
                   }}
                   cameraZoom={cameraZoom}
                   onUpdate={handleUpdateNode}
+                  onPortClick={handlePortClick}
+                  onPortPointerDown={handlePortPointerDown}
+                  targetPreview={portTargetPreview}
+                  onSelect={(nodeId) => {
+                    setSelectedNodeId(nodeId);
+                    setSelectedWireId(null);
+                    setCanvasMenu(null);
+                  }}
+                  onDelete={(target) => {
+                    if (target.serviceId) handleRemoveComponentFromCanvas(target.serviceId);
+                  }}
                 >
                   {/* Node Specific Contents */}
                   {node.id === 'node-pamela' && (
@@ -685,14 +1785,14 @@ export const ProjectWorkbenchView: React.FC<ProjectWorkbenchViewProps> = ({
                         <i className="fa-solid fa-puzzle-piece text-xs text-[#E0CA3C]" />
                       </div>
                       <p className="text-[0.55rem] text-[#DDFBD0]/60 line-clamp-2">
-                        {SERVICE_REGISTRY.find((s) => s.id === node.serviceId)?.description || 'Active modular component attached.'}
+                        {CATALOG.find((s) => s.serviceId === node.serviceId)?.description || 'Active modular component attached.'}
                       </p>
                       <button
                         type="button"
-                        onClick={() => handleToggleComponent(node.serviceId!)}
+                        onClick={() => handleRemoveComponentFromCanvas(node.serviceId!)}
                         className="w-full py-0.5 rounded border border-[#FE5F00]/60 bg-[#FE5F00]/10 text-[#FE5F00] text-[0.52rem] font-bold hover:bg-[#FE5F00] hover:text-black cursor-pointer"
                       >
-                        DETACH MODULE
+                        REMOVE FROM CANVAS
                       </button>
                     </div>
                   )}
@@ -703,14 +1803,58 @@ export const ProjectWorkbenchView: React.FC<ProjectWorkbenchViewProps> = ({
         </div>
       </div>
 
-      {/* ── TAB 2: ECS SERVICE CATALOG OVERLAY ────────────── */}
-      {activeTab === 'SERVICES' && (
-        <div className="absolute right-10 top-20 z-30 pointer-events-auto">
-          <ServiceDragger
-            activeComponents={client.activeComponents || []}
-            onToggleComponent={handleToggleComponent}
-          />
+      {notice && (
+        <div role="status" className="pointer-events-auto absolute bottom-4 right-6 z-40 rounded border border-[#086375] bg-[#020500]/95 px-3 py-2 text-xs text-[#DDFBD0] shadow-lg">
+          {notice}
         </div>
+      )}
+
+      <input
+        ref={importInputRef}
+        type="file"
+        accept="application/json,.json"
+        className="hidden"
+        onChange={handleWireImport}
+      />
+
+      {wireMenu && (
+        <ContextMenu
+          x={wireMenu.x}
+          y={wireMenu.y}
+          items={wireMenuItems(wireMenu.linkId)}
+          onClose={() => setWireMenu(null)}
+        />
+      )}
+
+      {wireKindPicker && (
+        <ContextMenu
+          x={wireKindPicker.x}
+          y={wireKindPicker.y}
+          items={wireKindPicker.kinds.map((kind) => ({
+            id: `wire-kind-${kind}`,
+            label: `${KIND_STYLE[kind].glyph === 'lock' ? '▣' : KIND_STYLE[kind].glyph === 'diamond' ? '◆' : '•'} ${kind.toUpperCase()}`,
+            onSelect: () => createWireFromPanel({ ...wireKindPicker.input, kind }),
+          }))}
+          onClose={() => setWireKindPicker(null)}
+        />
+      )}
+
+      {canvasMenu && (
+        <ContextMenu
+          x={canvasMenu.x}
+          y={canvasMenu.y}
+          items={canvasMenuItems}
+          onClose={() => setCanvasMenu(null)}
+        />
+      )}
+
+      {sunMenu && (
+        <ContextMenu
+          x={sunMenu.x}
+          y={sunMenu.y}
+          items={sunMenuItems}
+          onClose={() => setSunMenu(null)}
+        />
       )}
 
       {/* Financial Mutation Confirmation Modal */}

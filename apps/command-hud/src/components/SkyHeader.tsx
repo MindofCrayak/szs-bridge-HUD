@@ -57,8 +57,8 @@ export const SkyHeader: React.FC<SkyHeaderProps> = ({
   const defaultSpawnCockpit = () => {
     const width = 762;
     const height = 1366;
-    const left = window.screen.availLeft + window.screen.width;
-    const top = window.screen.availTop;
+    const left = window.screenX + window.outerWidth;
+    const top = window.screenY;
 
     const windowFeatures = `width=${width},height=${height},left=${left},top=${top},menubar=no,toolbar=no,location=no,status=no,resizable=yes,scrollbars=yes`;
     window.open('/cockpit', 'SZS_AvionicsCockpit', windowFeatures);

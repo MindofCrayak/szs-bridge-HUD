@@ -43,6 +43,12 @@ import { useBridgeKeybindings, loadStoredKeymap, KeymapConfig } from './hooks/us
 import { KeybindingSettingsModal } from './components/navigation/KeybindingSettingsModal';
 import { HudErrorBoundary } from './components/HudErrorBoundary';
 import { useRTSHotkeys } from './hooks/useKeybindings';
+import { WireCreateInput, WireEditableFields, WirePanelActions, WirePanelSnapshot } from './ecs/links';
+import { PendingProposal } from './ecs/proposals';
+import { publishHudEvent } from './ecs/events';
+import type { HudEvent } from './ecs/events';
+import { MAX_ANIMATED } from './ecs/wireTheme';
+import type { HudRule } from './ecs/rules';
 
 interface AppProps {
   isDemoModeInitial?: boolean;
@@ -62,6 +68,8 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
   const [isDemoMode, setIsDemoMode] = useState<boolean>(isDemoModeInitial);
   const [clients, setClients] = useState<ClientRecord[]>([]);
   const [alerts, setAlerts] = useState<AlfredAlert[]>([]);
+  const [pendingProposals, setPendingProposals] = useState<PendingProposal[]>([]);
+  const [terminalLogs, setTerminalLogs] = useState<TerminalLog[]>([]);
   const [telemetry, setTelemetry] = useState<HudTelemetry | null>(null);
   const [activeDepartment, setActiveDepartment] = useState<string>('Alfred');
 
@@ -97,6 +105,94 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
   const [workbenchClient, setWorkbenchClient] = useState<ClientRecord | null>(null);
   const [interactionMode, setInteractionMode] = useState<'drag' | 'lock' | 'edit'>('drag');
   const [showNonStructural, setShowNonStructural] = useState<boolean>(true);
+  const [wirePanel, setWirePanel] = useState<WirePanelSnapshot | null>(null);
+  const [activeWireIds, setActiveWireIds] = useState<string[]>([]);
+  const activeWireTimeoutRef = useRef<number | null>(null);
+  const wirePanelActionsRef = useRef<WirePanelActions | null>(null);
+
+  const handleWirePanelChange = useCallback((snapshot: WirePanelSnapshot | null) => {
+    setWirePanel(snapshot);
+  }, []);
+
+  const handleWirePanelActionsChange = useCallback((actions: WirePanelActions | null) => {
+    wirePanelActionsRef.current = actions;
+  }, []);
+
+  const handleAddProposal = useCallback((proposal: PendingProposal) => {
+    setPendingProposals((previous) => [
+      ...previous.filter((item) => item.id !== proposal.id),
+      proposal,
+    ].slice(-50));
+  }, []);
+
+  const handleDismissProposal = useCallback((proposalId: string) => {
+    setPendingProposals((previous) => previous.filter((proposal) => proposal.id !== proposalId));
+  }, []);
+
+  const activateWires = useCallback((linkIds: string[]) => {
+    if (linkIds.length === 0) return;
+    setActiveWireIds((previous) =>
+      [...new Set([...previous, ...linkIds])].slice(-MAX_ANIMATED));
+    if (activeWireTimeoutRef.current !== null) {
+      window.clearTimeout(activeWireTimeoutRef.current);
+    }
+    activeWireTimeoutRef.current = window.setTimeout(() => {
+      setActiveWireIds([]);
+      activeWireTimeoutRef.current = null;
+    }, 2000);
+  }, []);
+
+  const handlePublishHudEvent = useCallback((event: HudEvent) => {
+    const result = publishHudEvent(event, wirePanel?.links || []);
+    result.proposals.forEach(handleAddProposal);
+    activateWires(result.activeLinkIds);
+  }, [activateWires, handleAddProposal, wirePanel]);
+
+  const handleSimulateHudEvent = useCallback((event: HudEvent) => {
+    const simulationRules: readonly HudRule[] = [
+      {
+        id: 'dev-milestone-proposal-preview',
+        status: 'approved',
+        on: 'milestone.done',
+        from: 'dolores',
+        kind: 'context',
+        to: '*',
+        effect: 'propose',
+        proposal: 'draft_invoice',
+        moneyGate: true,
+        note: 'Development-only preview; no invoice or ledger action was performed.',
+      },
+    ];
+    const result = publishHudEvent(event, wirePanel?.links || [], { rules: simulationRules });
+    result.proposals.forEach(handleAddProposal);
+    activateWires(result.activeLinkIds);
+  }, [activateWires, handleAddProposal, wirePanel]);
+
+  useEffect(() => () => {
+    if (activeWireTimeoutRef.current !== null) {
+      window.clearTimeout(activeWireTimeoutRef.current);
+    }
+  }, []);
+
+  const handleCreateWire = useCallback((input: WireCreateInput) => {
+    return wirePanelActionsRef.current?.create(input) ?? false;
+  }, []);
+
+  const handleSelectWire = useCallback((linkId: string | null) => {
+    wirePanelActionsRef.current?.select(linkId);
+  }, []);
+
+  const handleUpdateWire = useCallback((linkId: string, updates: Partial<WireEditableFields>) => {
+    wirePanelActionsRef.current?.update(linkId, updates);
+  }, []);
+
+  const handleReverseWire = useCallback((linkId: string) => {
+    wirePanelActionsRef.current?.reverse(linkId);
+  }, []);
+
+  const handleRemoveWire = useCallback((linkId: string) => {
+    wirePanelActionsRef.current?.remove(linkId);
+  }, []);
 
   const handleToggleSkin = useCallback(() => {
     setCurrentSkin((prev) => {
@@ -216,6 +312,19 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
   }, [accessToken, fetchAttempt, isDemoMode]);
 
   const activeClient = clients.find((c) => c.ClientID === selectedClientId) || clients[0] || null;
+
+  const handleLogTerminal = (text: string, type: TerminalLog['type'] = 'normal') => {
+    const now = new Date();
+    setTerminalLogs((previous) => [
+      ...previous.slice(-49),
+      {
+        id: now.toISOString(),
+        time: now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
+        text,
+        type,
+      },
+    ]);
+  };
 
   const handleUpdateClient = (updated: ClientRecord) => {
     setClients((prev) => prev.map((c) => (c.ClientID === updated.ClientID ? updated : c)));
@@ -368,6 +477,14 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
 
       {/* Permanent 52px Left Rail + Floating 320px Auto-Closing Drawer */}
       <MultiAgentDispatch
+        wirePanel={wirePanel}
+        onCreateWire={handleCreateWire}
+        onSelectWire={handleSelectWire}
+        onUpdateWire={handleUpdateWire}
+        onReverseWire={handleReverseWire}
+        onRemoveWire={handleRemoveWire}
+        onPublishEvent={handlePublishHudEvent}
+        onSimulateEvent={handleSimulateHudEvent}
         activeDepartment={activeDepartment}
         onSelectDepartment={(dept) => {
           setActiveDepartment(dept);
@@ -377,6 +494,8 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
           if (dept === 'Daisy') setCurrentScreen('archive');
         }}
         alerts={alerts}
+        proposals={pendingProposals}
+        onDismissProposal={handleDismissProposal}
         clients={clients}
         selectedClient={activeClient}
         onSelectClient={(id) => {
@@ -449,6 +568,9 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
                   accessToken={accessToken}
                   interactionMode={interactionMode}
                   showNonStructural={showNonStructural}
+                  activeWireIds={activeWireIds}
+                  onWirePanelChange={handleWirePanelChange}
+                  onWirePanelActionsChange={handleWirePanelActionsChange}
                   onOpenContextMenu={(x, y, item) => {
                     if ('AccountPhase' in item) {
                       setContextMenu({ x, y, client: item });
@@ -458,20 +580,6 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
               </HudErrorBoundary>
             </div>
 
-            {/* Modular Console Chassis (Bottom HUD) — Absolute overlay, not a flex sibling */}
-            <div className="absolute bottom-2 left-0 right-0 z-30 pointer-events-none">
-              <HudErrorBoundary fallbackTitle="CHASSIS TELEMETRY FAULT">
-                <BottomConsoleChassis
-                  selectedClient={activeClient}
-                  onUpdateClient={handleUpdateClient}
-                  onTriggerCommand={(key) => setActiveModal(key)}
-                  controlGroups={controlGroups}
-                  activeGroupNum={activeGroupNum}
-                  onRecallControlGroup={(grp) => handleRecallClientSlot(grp)}
-                  context={workbenchClient ? 'CLIENT_WORKBENCH' : 'GLOBAL'}
-                />
-              </HudErrorBoundary>
-            </div>
           </div>
         )}
 
@@ -482,6 +590,7 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
             activeUnit={activeClient as any}
             onSelectUnit={(id) => setSelectedClientId(id)}
             onNavigateToDashboard={() => setCurrentScreen('dashboard')}
+            onLogTerminal={handleLogTerminal}
           />
         )}
 
@@ -492,6 +601,7 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
             activeUnit={activeClient as any}
             onSelectUnit={(id) => setSelectedClientId(id)}
             onNavigateToDashboard={() => setCurrentScreen('dashboard')}
+            onLogTerminal={handleLogTerminal}
           />
         )}
 
@@ -502,6 +612,7 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
             activeUnit={activeClient as any}
             onSelectUnit={(id) => setSelectedClientId(id)}
             onNavigateToDashboard={() => setCurrentScreen('dashboard')}
+            onLogTerminal={handleLogTerminal}
           />
         )}
 
@@ -528,6 +639,7 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
             units={clients as any}
             onSelectUnit={(id) => setSelectedClientId(id)}
             onNavigateToDashboard={() => setCurrentScreen('dashboard')}
+            onLogTerminal={handleLogTerminal}
           />
         )}
 
@@ -538,6 +650,7 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
             onUpdateUnit={() => {}}
             onNavigateToDashboard={() => setCurrentScreen('dashboard')}
             onOpenIntake={() => setActiveModal('A')}
+            onLogTerminal={handleLogTerminal}
           />
         )}
 
@@ -548,10 +661,27 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
           />
         )}
 
+        <div className="pointer-events-none absolute inset-x-0 bottom-6 z-[60]">
+          <HudErrorBoundary fallbackTitle="CHASSIS TELEMETRY FAULT">
+            <BottomConsoleChassis
+              selectedClient={activeClient}
+              onUpdateClient={handleUpdateClient}
+              onTriggerCommand={(key) => setActiveModal(key)}
+              onLogTerminal={handleLogTerminal}
+              onProposal={handleAddProposal}
+              controlGroups={controlGroups}
+              activeGroupNum={activeGroupNum}
+              onRecallControlGroup={(grp) => handleRecallClientSlot(grp)}
+              context={workbenchClient ? 'CLIENT_WORKBENCH' : 'GLOBAL'}
+            />
+          </HudErrorBoundary>
+        </div>
+
         {/* Persistent 24px Bottom Status Strip */}
         <BottomStatusStrip
           telemetry={headerTelemetry}
           isBackendConnected={Boolean(accessToken) || isDemoMode}
+          latestLog={terminalLogs[terminalLogs.length - 1] || null}
         />
       </main>
 

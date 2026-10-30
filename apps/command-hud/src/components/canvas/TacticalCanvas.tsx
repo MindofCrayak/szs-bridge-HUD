@@ -4,6 +4,7 @@ import { ClientRecord, ProjectRecord, AccountPhase } from '../../types';
 import { SlimVitalsCard } from './SlimVitalsCard';
 import { ProjectWorkbenchView } from './ProjectWorkbenchView';
 import { CanvasFloatingToolbar } from './CanvasFloatingToolbar';
+import { WirePanelActions, WirePanelSnapshot } from '../../ecs/links';
 
 interface TacticalCanvasProps {
   clients: ClientRecord[];
@@ -19,6 +20,9 @@ interface TacticalCanvasProps {
   accessToken?: string | null;
   interactionMode?: 'drag' | 'lock' | 'edit';
   showNonStructural?: boolean;
+  activeWireIds?: string[];
+  onWirePanelChange?: (snapshot: WirePanelSnapshot | null) => void;
+  onWirePanelActionsChange?: (actions: WirePanelActions | null) => void;
 }
 
 interface MacroZone {
@@ -53,6 +57,9 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
   accessToken,
   interactionMode: propInteractionMode = 'drag',
   showNonStructural: propShowNonStructural = true,
+  activeWireIds = [],
+  onWirePanelChange,
+  onWirePanelActionsChange,
 }) => {
   const {
     viewportRef,
@@ -264,6 +271,9 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
             accessToken={accessToken}
             interactionMode={interactionMode}
             showNonStructural={showNonStructural}
+            activeWireIds={activeWireIds}
+            onWirePanelChange={onWirePanelChange}
+            onWirePanelActionsChange={onWirePanelActionsChange}
             onTriggerAction={(action, payload) => {
               if (action === 'OPEN_TASKS' || action === 'DRAFT_INVOICE') {
                 onOpenContextMenu(window.innerWidth / 2, window.innerHeight / 2, payload?.client || workbenchClient);

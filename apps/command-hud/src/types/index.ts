@@ -73,10 +73,18 @@ export interface ServiceComponent {
 
 export type ViewportContext = 'GLOBAL' | 'CLIENT_WORKBENCH';
 
-export interface ClientUnit extends ClientRecord {
+export interface ClientUnit extends Partial<ClientRecord> {
   id: string;
   name: string;
   companyName: string;
+  primaryContact?: string;
+  contactEmail?: string;
+  contractValue: number;
+  depositPaid: boolean;
+  driveFolderUrl?: string;
+  notesDocUrl?: string;
+  chatSpaceUrl?: string;
+  notes?: string;
   pipelineStage: string;
   totalMilestones: number;
   completedMilestones: number;

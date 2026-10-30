@@ -5,6 +5,7 @@ import { DualCenterBay } from './DualCenterBay';
 import { ClientDossierBay } from './ClientDossierBay';
 import { MacroPadBay } from './MacroPadBay';
 import { CalendarMeetingEvent, CalendarSource } from '../CalendarConnectorModal';
+import { PendingProposal } from '../../ecs/proposals';
 
 interface BottomConsoleChassisProps {
   selectedClient: ClientRecord | null;
@@ -18,6 +19,7 @@ interface BottomConsoleChassisProps {
   calendarMeetings?: CalendarMeetingEvent[];
   onOpenFeedConfig?: () => void;
   context?: import('../../types').ViewportContext;
+  onProposal?: (proposal: PendingProposal) => void;
 }
 
 type BayId = 'calendar' | 'alfred' | 'dossier' | 'macropad';
@@ -34,6 +36,7 @@ export const BottomConsoleChassis: React.FC<BottomConsoleChassisProps> = ({
   calendarMeetings,
   onOpenFeedConfig,
   context = 'GLOBAL',
+  onProposal,
 }) => {
   // Pinned state persisted in localStorage
   const [pinnedBays, setPinnedBays] = useState<Record<BayId, boolean>>(() => {
@@ -154,17 +157,17 @@ export const BottomConsoleChassis: React.FC<BottomConsoleChassisProps> = ({
   };
 
   return (
-    <footer className="relative z-30 flex w-full flex-row items-end gap-3 select-none px-4 pb-2 bg-transparent pointer-events-none justify-center">
+    <footer className="relative z-30 flex w-full flex-row items-end justify-center gap-1 select-none bg-transparent px-1 pb-2 pointer-events-none sm:gap-3 sm:px-4">
       {/* ── BAY 1: CALENDAR BAY ─────────────────────────────────── */}
       <div
         onMouseEnter={() => handleMouseEnter('calendar')}
         onMouseLeave={() => handleMouseLeave('calendar')}
         className={`pointer-events-auto flex flex-col rounded-xl border border-[#1a2b27] bg-[#0d1513]/95 shadow-[0_8px_32px_rgba(0,0,0,0.85)] backdrop-blur-md transition-all duration-200 ease-out shrink-0 overflow-hidden ${
           isExpanded('calendar')
-            ? 'h-[45vh] min-h-[320px] shadow-[0_0_25px_rgba(8,99,117,0.4)]'
+            ? 'h-[45vh] shadow-[0_0_25px_rgba(8,99,117,0.4)]'
             : 'h-[44px]'
         }`}
-        style={{ width: 'var(--bay-calendar-w, 280px)' }}
+        style={{ width: 'clamp(72px, 16vw, var(--bay-calendar-w, 280px))' }}
       >
         {/* Collapsed Header Bar (~44px) */}
         <div
@@ -204,12 +207,12 @@ export const BottomConsoleChassis: React.FC<BottomConsoleChassisProps> = ({
         ref={alfredBayRef}
         onMouseEnter={() => handleMouseEnter('alfred')}
         onMouseLeave={() => handleMouseLeave('alfred')}
-        className={`pointer-events-auto flex flex-col rounded-xl border border-[#1a2b27] bg-[#0d1513]/95 shadow-[0_8px_32px_rgba(0,0,0,0.85)] backdrop-blur-md transition-all duration-200 ease-out flex-1 min-w-[340px] max-w-[560px] overflow-hidden ${
+        className={`pointer-events-auto flex min-w-0 flex-1 flex-col rounded-xl border border-[#1a2b27] bg-[#0d1513]/95 shadow-[0_8px_32px_rgba(0,0,0,0.85)] backdrop-blur-md transition-all duration-200 ease-out max-w-[560px] overflow-hidden ${
           isExpanded('alfred')
-            ? 'h-[45vh] min-h-[340px] shadow-[0_0_30px_rgba(8,99,117,0.5)] border-[#086375]/60'
+            ? 'h-[45vh] shadow-[0_0_30px_rgba(8,99,117,0.5)] border-[#086375]/60'
             : 'h-[44px]'
         }`}
-        style={{ width: 'var(--bay-center-w, 440px)' }}
+        style={{ width: 'clamp(160px, 29vw, var(--bay-center-w, 440px))' }}
       >
         {/* Collapsed Header Bar (~44px) */}
         <div
@@ -243,6 +246,7 @@ export const BottomConsoleChassis: React.FC<BottomConsoleChassisProps> = ({
                 selectedClient={selectedClient}
                 onUpdateClient={onUpdateClient}
                 onLogTerminal={onLogTerminal}
+                onProposal={onProposal}
               />
             </div>
           </div>
@@ -255,10 +259,10 @@ export const BottomConsoleChassis: React.FC<BottomConsoleChassisProps> = ({
         onMouseLeave={() => handleMouseLeave('dossier')}
         className={`pointer-events-auto flex flex-col rounded-xl border border-[#1a2b27] bg-[#0d1513]/95 shadow-[0_8px_32px_rgba(0,0,0,0.85)] backdrop-blur-md transition-all duration-200 ease-out shrink-0 overflow-hidden ${
           isExpanded('dossier')
-            ? 'h-[45vh] min-h-[320px] shadow-[0_0_25px_rgba(8,99,117,0.4)]'
+            ? 'h-[45vh] shadow-[0_0_25px_rgba(8,99,117,0.4)]'
             : 'h-[44px]'
         }`}
-        style={{ width: 'var(--bay-dossier-w, 270px)' }}
+        style={{ width: 'clamp(72px, 15vw, var(--bay-dossier-w, 270px))' }}
       >
         {/* Collapsed Header Bar (~44px) */}
         <div
@@ -294,10 +298,10 @@ export const BottomConsoleChassis: React.FC<BottomConsoleChassisProps> = ({
         onMouseLeave={() => handleMouseLeave('macropad')}
         className={`pointer-events-auto flex flex-col rounded-xl border border-[#1a2b27] bg-[#0d1513]/95 shadow-[0_8px_32px_rgba(0,0,0,0.85)] backdrop-blur-md transition-all duration-200 ease-out shrink-0 overflow-hidden ${
           isExpanded('macropad')
-            ? 'h-[45vh] min-h-[320px] shadow-[0_0_25px_rgba(8,99,117,0.4)]'
+            ? 'h-[45vh] shadow-[0_0_25px_rgba(8,99,117,0.4)]'
             : 'h-[44px]'
         }`}
-        style={{ width: 'var(--bay-macro-w, 280px)' }}
+        style={{ width: 'clamp(72px, 15vw, var(--bay-macro-w, 280px))' }}
       >
         {/* Collapsed Header Bar (~44px) */}
         <div

@@ -334,10 +334,10 @@ export const KeybindingSettingsModal: React.FC<KeybindingSettingsModalProps> = (
                     <input
                       type="text"
                       maxLength={1}
-                      value={keymap[key]}
+                      value={keymap.macroPad[key]}
                       onChange={(e) => {
                         const val = e.target.value.toUpperCase();
-                        if (val) setKeymap((prev) => ({ ...prev, [key]: val }));
+                        if (val) setKeymap((prev) => ({ ...prev, macroPad: { ...prev.macroPad, [key]: val } }));
                       }}
                       className="w-8 text-center bg-[#086375]/20 border border-[#086375] rounded text-white font-bold"
                     />

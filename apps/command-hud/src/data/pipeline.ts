@@ -85,6 +85,11 @@ export const getPipelineColumnIndex = (stage: string): number => {
   return 3;
 };
 
+export const getPipelineStageForColumn = (columnIndex: number): string => {
+  const index = Math.max(0, Math.min(PIPELINE_COLUMNS.length - 1, Math.floor(columnIndex)));
+  return PIPELINE_COLUMNS[index].defaultStage;
+};
+
 export const getNextPipelineStage = (stage: string): string => {
   const current = normalizeSprintStage(stage);
   const idx = PIPELINE_STAGE_SEQUENCE.indexOf(current);

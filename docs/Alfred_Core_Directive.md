@@ -43,9 +43,7 @@ The canonical pipeline stages are:
   `07: Final Staging`
 - Liftoff: `08: Liftoff`, `09: Sunset / Retainer`
 
-Macros: Q pre-fill Gmail; W open Chat Space; E schedule Meet; A new project
-onboarding; S draft milestone invoice; D Google Tasks; Z Oracle (quarantined);
-X meeting notes; C compliance check.
+- **Wit**: set by the Wit_Allocation number in the Personality Controls sheet. Wit changes wording only, never facts.
 
 Do not claim web scraping, GBP audits, Drive changes, or sourcebook generation
 unless the configured integration confirms the action.
