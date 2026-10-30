@@ -20,8 +20,18 @@ export const GoogleSignIn: React.FC<GoogleSignInProps> = ({
   const signIn = useGoogleLogin({
     flow: 'implicit',
     scope: MASTER_CONTROL_OAUTH_SCOPES.join(' '),
-    onSuccess: onToken,
-    onError: (response) => onError(response.error_description || response.error || 'Google sign-in was not completed.'),
+    onSuccess: (token) => {
+      console.log('✅ Google OAuth Success:', token);
+      onToken(token);
+    },
+    onError: (response) => {
+      console.error('❌ Google OAuth Error Response:', response);
+      onError(response.error_description || response.error || 'Google sign-in was not completed.');
+    },
+    onNonOAuthError: (nonOAuthError) => {
+      console.error('❌ Google Non-OAuth Error:', nonOAuthError);
+      onError(nonOAuthError.type || 'Non-OAuth error occurred during sign-in.');
+    },
   });
 
   return (
