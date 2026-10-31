@@ -13,6 +13,7 @@ import {
   WireEditableFields,
   WirePanelSnapshot,
 } from '../../ecs/links';
+import { ERROR_COLOR } from '../../ecs/wireTheme';
 
 interface MultiAgentDispatchProps {
   activeDepartment?: string;
@@ -33,6 +34,7 @@ interface MultiAgentDispatchProps {
   onRemoveWire?: (linkId: string) => void;
   onPublishEvent?: (event: HudEvent) => void;
   onSimulateEvent?: (event: HudEvent) => void;
+  onSimulateUnblockEvent?: (event: HudEvent) => void;
 }
 
 /** Maps each ECS service to its owning AI Sub-Routine department */
@@ -100,6 +102,7 @@ export const MultiAgentDispatch: React.FC<MultiAgentDispatchProps> = ({
   onRemoveWire,
   onPublishEvent,
   onSimulateEvent,
+  onSimulateUnblockEvent,
 }) => {
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [commandInput, setCommandInput] = useState('');
@@ -143,6 +146,15 @@ export const MultiAgentDispatch: React.FC<MultiAgentDispatchProps> = ({
     ? allowedKinds(selectedWireFrom.type, selectedWireTo.type)
     : [];
   const developerEventSource = wirePanel?.nodes.find((node) => node.id === 'node-dolores');
+  const developerDependencySource = wirePanel?.nodes.find((node) => node.id === 'node-pamela');
+  const canPreviewDependencyUnblock = Boolean(
+    developerDependencySource
+    && wirePanel?.links.some((link) =>
+      link.fromNodeId === developerDependencySource.id
+      && link.toNodeId === 'node-vala'
+      && link.kind === 'dependency'
+      && link.enabled),
+  );
 
   useEffect(() => {
     if (wirePanel?.selectedWireId && !wirePanel.contextMenuOpen) {
@@ -748,22 +760,28 @@ export const MultiAgentDispatch: React.FC<MultiAgentDispatchProps> = ({
                             {wirePanel.links.map((link) => {
                               const source = wirePanel.nodes.find((node) => node.id === link.fromNodeId);
                               const target = wirePanel.nodes.find((node) => node.id === link.toNodeId);
+                              const hasMissingEndpoint = !source || !target;
                               const isSelected = link.id === wirePanel.selectedWireId;
                               return (
                                 <button
                                   key={link.id}
                                   type="button"
                                   aria-pressed={isSelected}
+                                  aria-label={`${source?.label || link.fromNodeId} to ${target?.label || link.toNodeId}, ${link.kind}${hasMissingEndpoint ? ', error: endpoint unavailable' : ''}`}
                                   onClick={() => onSelectWire?.(link.id)}
+                                  style={hasMissingEndpoint ? { borderColor: ERROR_COLOR, color: ERROR_COLOR } : undefined}
                                   className={`w-full rounded border px-2 py-1.5 text-left text-[0.56rem] ${
                                     isSelected
                                       ? 'border-[#22D3EE] bg-[#22D3EE]/10 text-[#DDFBD0]'
-                                      : 'border-[#086375]/40 text-[#DDFBD0]/65 hover:border-[#086375]'
+                                      : hasMissingEndpoint
+                                        ? 'bg-red-950/20'
+                                        : 'border-[#086375]/40 text-[#DDFBD0]/65 hover:border-[#086375]'
                                   }`}
                                 >
                                   <span className="block truncate">{source?.label || link.fromNodeId} → {target?.label || link.toNodeId}</span>
-                                  <span className="text-[0.5rem] uppercase text-[#086375]">
+                                  <span className={`text-[0.5rem] uppercase ${hasMissingEndpoint ? '' : 'text-[#086375]'}`}>
                                     {link.kind} · {link.mode} · {link.enabled ? 'enabled' : 'disabled'}
+                                    {hasMissingEndpoint ? ' · endpoint error' : ''}
                                   </span>
                                 </button>
                               );
@@ -775,6 +793,11 @@ export const MultiAgentDispatch: React.FC<MultiAgentDispatchProps> = ({
 
                         {selectedWire ? (
                           <div className="space-y-2 border-t border-[#086375]/40 pt-2">
+                            {(!selectedWireFrom || !selectedWireTo) && (
+                              <p role="alert" style={{ color: ERROR_COLOR }} className="text-[0.56rem]">
+                                Wire endpoint unavailable. This wire is not rendered on the canvas; delete it or import a valid wire export.
+                              </p>
+                            )}
                             <div className="flex items-start justify-between gap-2">
                               <div className="min-w-0 text-[0.58rem] text-white">
                                 <span className="block truncate">{selectedWireFrom?.label || selectedWire.fromNodeId}</span>
@@ -903,6 +926,26 @@ export const MultiAgentDispatch: React.FC<MultiAgentDispatchProps> = ({
                           >
                             Preview proposal fixture
                           </button>
+                          <button
+                            type="button"
+                            disabled={!developerDependencySource || !canPreviewDependencyUnblock}
+                            onClick={() => {
+                              if (!developerDependencySource) return;
+                              onSimulateUnblockEvent?.({
+                                type: 'msa.signed',
+                                sourceNodeId: developerDependencySource.id,
+                                clientId: wirePanel.clientId,
+                              });
+                            }}
+                            className="mt-1 w-full rounded border border-[#086375] px-2 py-1 text-[0.54rem] uppercase text-[#DDFBD0] hover:border-[#22D3EE] disabled:cursor-not-allowed disabled:opacity-40"
+                          >
+                            Preview dependency unblock
+                          </button>
+                          {!canPreviewDependencyUnblock && (
+                            <p className="mt-1 text-[0.52rem] text-[#DDFBD0]/45">
+                              Add an enabled Pamela to Vala dependency wire to preview its derived unblock state.
+                            </p>
+                          )}
                         </details>
                       )}
                     </>

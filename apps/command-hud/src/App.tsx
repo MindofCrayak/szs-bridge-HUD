@@ -49,6 +49,7 @@ import { publishHudEvent } from './ecs/events';
 import type { HudEvent } from './ecs/events';
 import { MAX_ANIMATED } from './ecs/wireTheme';
 import type { HudRule } from './ecs/rules';
+import type { AgentCallsign, AlfredNodeContext, PendingAgentDispatch } from './ecs/agentDispatch';
 
 interface AppProps {
   isDemoModeInitial?: boolean;
@@ -72,6 +73,7 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
   const [terminalLogs, setTerminalLogs] = useState<TerminalLog[]>([]);
   const [telemetry, setTelemetry] = useState<HudTelemetry | null>(null);
   const [activeDepartment, setActiveDepartment] = useState<string>('Alfred');
+  const [pendingAgentDispatch, setPendingAgentDispatch] = useState<PendingAgentDispatch | null>(null);
 
   const [selectedClientId, setSelectedClientId] = useState<string | null>(null);
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; client: ClientRecord } | null>(null);
@@ -107,6 +109,7 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
   const [showNonStructural, setShowNonStructural] = useState<boolean>(true);
   const [wirePanel, setWirePanel] = useState<WirePanelSnapshot | null>(null);
   const [activeWireIds, setActiveWireIds] = useState<string[]>([]);
+  const [completedNodeIdsByClient, setCompletedNodeIdsByClient] = useState<Record<string, string[]>>({});
   const activeWireTimeoutRef = useRef<number | null>(null);
   const wirePanelActionsRef = useRef<WirePanelActions | null>(null);
 
@@ -129,6 +132,16 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
     setPendingProposals((previous) => previous.filter((proposal) => proposal.id !== proposalId));
   }, []);
 
+  const handleDispatchAgent = useCallback((agent: AgentCallsign, nodeContext: AlfredNodeContext) => {
+    const prompt = `@${agent} inspect [Node: ${nodeContext.label} (${nodeContext.id})]`;
+    setActiveDepartment(agent);
+    setPendingAgentDispatch({ id: Date.now(), agent, prompt, nodeContext });
+  }, []);
+
+  const handleAgentDispatchHandled = useCallback((dispatchId: number) => {
+    setPendingAgentDispatch((current) => current?.id === dispatchId ? null : current);
+  }, []);
+
   const activateWires = useCallback((linkIds: string[]) => {
     if (linkIds.length === 0) return;
     setActiveWireIds((previous) =>
@@ -142,11 +155,24 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
     }, 2000);
   }, []);
 
-  const handlePublishHudEvent = useCallback((event: HudEvent) => {
-    const result = publishHudEvent(event, wirePanel?.links || []);
+  const handleHudEventResult = useCallback((event: HudEvent, result: ReturnType<typeof publishHudEvent>) => {
     result.proposals.forEach(handleAddProposal);
     activateWires(result.activeLinkIds);
+    if (event.clientId !== wirePanel?.clientId || result.unblockedLinkIds.length === 0) return;
+    const unblockedLinkIds = new Set(result.unblockedLinkIds);
+    const completedNodeIds = wirePanel.links
+      .filter((link) => unblockedLinkIds.has(link.id))
+      .map((link) => link.fromNodeId);
+    if (completedNodeIds.length === 0) return;
+    setCompletedNodeIdsByClient((previous) => ({
+      ...previous,
+      [event.clientId]: [...new Set([...(previous[event.clientId] || []), ...completedNodeIds])],
+    }));
   }, [activateWires, handleAddProposal, wirePanel]);
+
+  const handlePublishHudEvent = useCallback((event: HudEvent) => {
+    handleHudEventResult(event, publishHudEvent(event, wirePanel?.links || []));
+  }, [handleHudEventResult, wirePanel]);
 
   const handleSimulateHudEvent = useCallback((event: HudEvent) => {
     const simulationRules: readonly HudRule[] = [
@@ -164,9 +190,25 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
       },
     ];
     const result = publishHudEvent(event, wirePanel?.links || [], { rules: simulationRules });
-    result.proposals.forEach(handleAddProposal);
-    activateWires(result.activeLinkIds);
-  }, [activateWires, handleAddProposal, wirePanel]);
+    handleHudEventResult(event, result);
+  }, [handleHudEventResult, wirePanel]);
+
+  const handleSimulateUnblockHudEvent = useCallback((event: HudEvent) => {
+    const simulationRules: readonly HudRule[] = [
+      {
+        id: 'dev-msa-unblock-preview',
+        status: 'approved',
+        on: 'msa.signed',
+        from: 'pamela',
+        kind: 'dependency',
+        to: 'vala',
+        effect: 'unblock',
+        note: 'Development-only preview; dependency status was not persisted.',
+      },
+    ];
+    const result = publishHudEvent(event, wirePanel?.links || [], { rules: simulationRules });
+    handleHudEventResult(event, result);
+  }, [handleHudEventResult, wirePanel]);
 
   useEffect(() => () => {
     if (activeWireTimeoutRef.current !== null) {
@@ -292,6 +334,7 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
                   Title: String(row.CurrentMilestone || 'Active Sprint Delivery'),
                 },
               ],
+              activeComponents: Array.isArray(row.activeComponents) ? row.activeComponents : [],
             };
           });
           setClients(mapped);
@@ -485,6 +528,7 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
         onRemoveWire={handleRemoveWire}
         onPublishEvent={handlePublishHudEvent}
         onSimulateEvent={handleSimulateHudEvent}
+        onSimulateUnblockEvent={handleSimulateUnblockHudEvent}
         activeDepartment={activeDepartment}
         onSelectDepartment={(dept) => {
           setActiveDepartment(dept);
@@ -569,8 +613,10 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
                   interactionMode={interactionMode}
                   showNonStructural={showNonStructural}
                   activeWireIds={activeWireIds}
+                  doneNodeIds={completedNodeIdsByClient[workbenchClient?.ClientID || ''] || []}
                   onWirePanelChange={handleWirePanelChange}
                   onWirePanelActionsChange={handleWirePanelActionsChange}
+                  onDispatchAgent={handleDispatchAgent}
                   onOpenContextMenu={(x, y, item) => {
                     if ('AccountPhase' in item) {
                       setContextMenu({ x, y, client: item });
@@ -669,6 +715,8 @@ export default function App({ isDemoModeInitial = false }: AppProps) {
               onTriggerCommand={(key) => setActiveModal(key)}
               onLogTerminal={handleLogTerminal}
               onProposal={handleAddProposal}
+              pendingAgentDispatch={pendingAgentDispatch}
+              onAgentDispatchHandled={handleAgentDispatchHandled}
               controlGroups={controlGroups}
               activeGroupNum={activeGroupNum}
               onRecallControlGroup={(grp) => handleRecallClientSlot(grp)}

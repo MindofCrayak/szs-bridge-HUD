@@ -28,6 +28,16 @@ Stage identifiers are canonical strings `00`–`09` as defined in
 requested change, but only a successful Master Control response confirms
 persistence.
 
+## Service attachments
+
+`Projects.ActiveComponents` stores comma-separated service IDs and maps to the
+HUD's `activeComponents` array. `Clients.ContractValue` remains the
+authoritative contract amount. A client-scoped attachment must resolve to
+exactly one client row and one project row; ambiguous project matches are
+rejected until the request contract includes a `ProjectID`. Reattaching an
+already-installed service must not change the contract amount or create
+duplicate tasks.
+
 ### Stage 04+ authorization gate
 
 The local `updateKanban` handler blocks transitions to stage `04` or later

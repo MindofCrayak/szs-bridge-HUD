@@ -3,12 +3,15 @@ import { ClientRecord } from '../../types';
 import { AlfredTerminal } from '../AlfredTerminal';
 import { ClientDetailInspector } from './ClientDetailInspector';
 import { PendingProposal } from '../../ecs/proposals';
+import type { PendingAgentDispatch } from '../../ecs/agentDispatch';
 
 interface DualCenterBayProps {
   selectedClient: ClientRecord | null;
   onUpdateClient?: (updated: ClientRecord) => void;
   onLogTerminal?: (message: string, type?: 'normal' | 'action' | 'server' | 'alert') => void;
   onProposal?: (proposal: PendingProposal) => void;
+  pendingAgentDispatch?: PendingAgentDispatch | null;
+  onAgentDispatchHandled?: (dispatchId: number) => void;
 }
 
 export const DualCenterBay: React.FC<DualCenterBayProps> = ({
@@ -16,6 +19,8 @@ export const DualCenterBay: React.FC<DualCenterBayProps> = ({
   onUpdateClient,
   onLogTerminal,
   onProposal,
+  pendingAgentDispatch,
+  onAgentDispatchHandled,
 }) => {
   const [isInspectorOpen, setIsInspectorOpen] = useState(false);
 
@@ -47,7 +52,12 @@ export const DualCenterBay: React.FC<DualCenterBayProps> = ({
 
       {/* Base Layer: Alfred Conversational Terminal */}
       <div className="flex-1 min-h-0 relative">
-        <AlfredTerminal activeUnit={selectedClient as any} onProposal={onProposal} />
+        <AlfredTerminal
+          activeUnit={selectedClient as any}
+          onProposal={onProposal}
+          pendingAgentDispatch={pendingAgentDispatch}
+          onAgentDispatchHandled={onAgentDispatchHandled}
+        />
 
         {/* Slide-Down Center Overlay: ClientDetailInspector */}
         {isInspectorOpen && selectedClient && (

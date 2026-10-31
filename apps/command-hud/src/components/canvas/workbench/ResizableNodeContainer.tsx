@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { Lock, Unlock, Maximize2 } from 'lucide-react';
 import { Pin } from '../../../ecs/links';
 import { ConnectionPort, ConnectionTargetPreview } from './ConnectionPort';
@@ -22,8 +22,13 @@ interface Props {
   onPortClick?: (nodeId: string, pin: Pin) => void;
   onPortPointerDown?: (event: React.PointerEvent<HTMLDivElement>, nodeId: string, pin: Pin) => void;
   targetPreview?: ConnectionTargetPreview | null;
-  onSelect?: (nodeId: string) => void;
+  onSelect?: (nodeId: string, additive?: boolean) => void;
+  isSelected?: boolean;
+  onGroupDragStart?: (nodeId: string) => boolean;
+  onGroupDragMove?: (nodeId: string, dx: number, dy: number) => void;
+  onGroupDragEnd?: () => void;
   onDelete?: (node: NodeGeometry) => void;
+  additionalMenuItems?: MenuItem[];
   children: React.ReactNode;
 }
 
@@ -35,10 +40,16 @@ export const ResizableNodeContainer: React.FC<Props> = ({
   onPortPointerDown,
   targetPreview,
   onSelect,
+  isSelected = false,
+  onGroupDragStart,
+  onGroupDragMove,
+  onGroupDragEnd,
   onDelete,
+  additionalMenuItems = [],
   children,
 }) => {
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+  const dragMovedRef = useRef(false);
   const menuItems: MenuItem[] = [
     {
       id: 'lock',
@@ -46,6 +57,7 @@ export const ResizableNodeContainer: React.FC<Props> = ({
       icon: node.isLocked ? <Unlock size={12} /> : <Lock size={12} />,
       onSelect: () => onUpdate(node.id, { isLocked: !node.isLocked }),
     },
+    ...additionalMenuItems,
     ...(node.serviceId && onDelete
       ? [{
           id: 'remove',
@@ -72,17 +84,22 @@ export const ResizableNodeContainer: React.FC<Props> = ({
     const startY = e.clientY;
     const initX = node.x;
     const initY = node.y;
+    const groupDrag = onGroupDragStart?.(node.id) ?? false;
+    dragMovedRef.current = false;
 
     const onPointerMove = (ev: PointerEvent) => {
       const zoom = cameraZoom > 0 ? cameraZoom : 1.0;
       const dx = (ev.clientX - startX) / zoom;
       const dy = (ev.clientY - startY) / zoom;
-      onUpdate(node.id, { x: Math.round(initX + dx), y: Math.round(initY + dy) });
+      if (Math.hypot(dx, dy) > 2) dragMovedRef.current = true;
+      if (groupDrag) onGroupDragMove?.(node.id, dx, dy);
+      else onUpdate(node.id, { x: Math.round(initX + dx), y: Math.round(initY + dy) });
     };
 
     const onPointerUp = () => {
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
+      if (groupDrag) onGroupDragEnd?.();
     };
 
     window.addEventListener('pointermove', onPointerMove);
@@ -122,6 +139,7 @@ export const ResizableNodeContainer: React.FC<Props> = ({
   const handleContextMenu = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    if (!isSelected) onSelect?.(node.id, e.shiftKey);
     setContextMenu({ x: e.clientX, y: e.clientY });
   };
 
@@ -138,7 +156,11 @@ export const ResizableNodeContainer: React.FC<Props> = ({
             return;
           }
           if ((e.target as HTMLElement).closest('button, input, [data-port-id]')) return;
-          onSelect?.(node.id);
+          if (dragMovedRef.current) {
+            dragMovedRef.current = false;
+            return;
+          }
+          onSelect?.(node.id, e.shiftKey);
         }}
         style={{
           transform: `translate3d(${node.x}px, ${node.y}px, 0)`,
@@ -148,8 +170,11 @@ export const ResizableNodeContainer: React.FC<Props> = ({
           top: 0,
           left: 0,
         }}
+        aria-selected={isSelected}
         className={`group flex flex-col rounded-xl border bg-[#020500]/95 backdrop-blur-md transition-shadow select-none z-20 pointer-events-auto ${
-          node.isLocked
+          isSelected
+            ? 'ring-2 ring-[#E0CA3C] ring-offset-2 ring-offset-[#020500]'
+            : node.isLocked
             ? 'border-[#086375]/40 shadow-none'
             : 'border-[#086375] hover:border-[#E0CA3C] shadow-[0_0_20px_rgba(8,99,117,0.2)]'
         }`}

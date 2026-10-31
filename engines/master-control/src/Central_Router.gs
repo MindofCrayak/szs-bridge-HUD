@@ -20,6 +20,8 @@ const SYSTEM_CONFIG = {
 };
 
 function getMasterControlSpreadsheet_() {
+  const configuredId = PropertiesService.getScriptProperties().getProperty('MASTER_CONTROL_SHEET_ID');
+  if (configuredId) return SpreadsheetApp.openById(configuredId);
   const active = SpreadsheetApp.getActiveSpreadsheet();
   if (active) return active;
   return SpreadsheetApp.openById(SYSTEM_CONFIG.MASTER_CONTROL_SHEET_ID);
@@ -65,7 +67,7 @@ function doPost(e) {
         );
         break;
       case 'attachClientServiceNode':
-        responseData = attachClientServiceNode(payload);
+        responseData = attachClientServiceNode_(payload);
         break;
       case 'recordPayment':
         return buildResponse_(501, 'Payment recording is not implemented.');
@@ -674,7 +676,8 @@ function buildHudPayload_() {
     const clientID = String(project.ClientID || '').trim();
     if (!clientID) return;
     const projectedProject = pickHudFields_(project, [
-      'ProjectFolderID', 'SOW_DocID', 'MeetingNotes_DriveFolderID'
+      'ProjectFolderID', 'SOW_DocID', 'MeetingNotes_DriveFolderID',
+      'ActiveComponents'
     ]);
     const combinedProject = projectByClient.get(clientID) || {};
     Object.keys(projectedProject).forEach(field => {
@@ -831,49 +834,178 @@ function pushToMailCommandCenter_(clientID, leadData) {
  */
 
 function attachClientServiceNode(payload) {
-  var ss = SpreadsheetApp.getActiveSpreadsheet();
-  var projectSheet = ss.getSheetByName("Master_Control_Projects") || ss.getSheetByName("Projects");
-  if (!projectSheet) {
-    projectSheet = ss.getSheets()[0];
+  getAuthorizedMasterControlUser_();
+  const lock = LockService.getScriptLock();
+  let lockAcquired = false;
+
+  try {
+    lock.waitLock(30000);
+    lockAcquired = true;
+    return attachClientServiceNode_(payload);
+  } finally {
+    if (lockAcquired) lock.releaseLock();
   }
-  var data = projectSheet.getDataRange().getValues();
-  var clientRow = -1;
-
-  for (var i = 1; i < data.length; i++) {
-    if (String(data[i][0]) === String(payload.clientId) || String(data[i][1]) === String(payload.clientId)) {
-      clientRow = i + 1;
-      break;
-    }
-  }
-
-  if (clientRow === -1) throw new Error("Client not found: " + payload.clientId);
-
-  // 1. Update ActiveComponents (Col 8 / JSON array or comma list)
-  var currentComponents = projectSheet.getRange(clientRow, 8).getValue() || "";
-  var compArray = currentComponents ? String(currentComponents).split(",") : [];
-  if (compArray.indexOf(payload.serviceId) === -1) {
-    compArray.push(payload.serviceId);
-    projectSheet.getRange(clientRow, 8).setValue(compArray.join(","));
-  }
-
-  // 2. Increment ContractValue (Col 5)
-  var currentVal = Number(projectSheet.getRange(clientRow, 5).getValue() || 0);
-  var newVal = currentVal + Number(payload.priceDelta);
-  projectSheet.getRange(clientRow, 5).setValue(newVal);
-
-  // 3. Inject standard tasks into Google Tasks if array is non-empty
-  if (payload.tasks && payload.tasks.length > 0 && typeof Tasks !== 'undefined') {
-    try {
-      var taskLists = Tasks.Tasklists.list().getItems();
-      var targetList = taskLists && taskLists.length > 0 ? taskLists[0].getId() : "@default";
-      payload.tasks.forEach(function(taskTitle) {
-        Tasks.Tasks.insert({ title: "[" + payload.serviceId + "] " + taskTitle }, targetList);
-      });
-    } catch (taskErr) {
-      console.warn("Tasks service injection skipped or unavailable: " + taskErr.message);
-    }
-  }
-
-  return { success: true, updatedValue: newVal };
 }
 
+function attachClientServiceNode_(payload) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
+    throw createRouterError_('A service attachment object is required.', 'INVALID_REQUEST', 400);
+  }
+  const clientId = String(payload.clientId == null ? '' : payload.clientId).trim();
+  const serviceId = String(payload.serviceId == null ? '' : payload.serviceId).trim();
+  const priceDelta = Number(payload.priceDelta);
+  if (!clientId || !serviceId || !Number.isFinite(priceDelta) || priceDelta <= 0) {
+    throw createRouterError_('ClientID, serviceId, and a positive priceDelta are required.', 'INVALID_REQUEST', 400);
+  }
+
+  const taskTitles = payload.tasks == null ? [] : payload.tasks;
+  if (!Array.isArray(taskTitles) || taskTitles.some(task => typeof task !== 'string' || !task.trim())) {
+    throw createRouterError_('tasks must be an array of non-empty task titles.', 'INVALID_REQUEST', 400);
+  }
+
+  const spreadsheet = getMasterControlSpreadsheet_();
+  const clientsSheet = spreadsheet.getSheetByName('Clients');
+  const projectsSheet = spreadsheet.getSheetByName('Projects');
+  if (!clientsSheet || !projectsSheet) {
+    throw new Error('The Clients and Projects sheets are required for service attachment.');
+  }
+
+  const clientValues = clientsSheet.getDataRange().getValues();
+  const projectValues = projectsSheet.getDataRange().getValues();
+  if (clientValues.length < 2 || projectValues.length < 2) {
+    throw createRouterError_('A matching client and project record are required.', 'CLIENT_NOT_FOUND', 404);
+  }
+
+  const clientHeaders = clientValues[0].map(value => String(value).trim());
+  const projectHeaders = projectValues[0].map(value => String(value).trim());
+  const clientIdColumn = clientHeaders.indexOf('ClientID');
+  const contractValueColumn = clientHeaders.indexOf('ContractValue');
+  const projectClientIdColumn = projectHeaders.indexOf('ClientID');
+  const activeComponentsColumn = projectHeaders.indexOf('ActiveComponents');
+  if (clientIdColumn === -1 || contractValueColumn === -1
+      || projectClientIdColumn === -1 || activeComponentsColumn === -1) {
+    throw new Error('Clients.ClientID, Clients.ContractValue, Projects.ClientID, and Projects.ActiveComponents are required.');
+  }
+
+  const matchingClients = clientValues.slice(1)
+    .map((row, index) => ({ row, sheetRow: index + 2 }))
+    .filter(item => String(item.row[clientIdColumn]).trim() === clientId);
+  if (matchingClients.length === 0) {
+    throw createRouterError_('The requested client was not found.', 'CLIENT_NOT_FOUND', 404);
+  }
+  if (matchingClients.length > 1) {
+    throw createRouterError_('Master Control contains duplicate ClientID records.', 'DUPLICATE_CLIENT', 409);
+  }
+
+  const matchingProjects = projectValues.slice(1)
+    .map((row, index) => ({ row, sheetRow: index + 2 }))
+    .filter(item => String(item.row[projectClientIdColumn]).trim() === clientId);
+  if (matchingProjects.length === 0) {
+    throw createRouterError_('No project record is associated with the requested client.', 'PROJECT_NOT_FOUND', 404);
+  }
+  if (matchingProjects.length > 1) {
+    throw createRouterError_('Service attachment requires exactly one project for the requested client.', 'AMBIGUOUS_PROJECT', 409);
+  }
+
+  const clientRecord = matchingClients[0];
+  const projectRecord = matchingProjects[0];
+  const currentValueRaw = clientRecord.row[contractValueColumn];
+  const currentValue = currentValueRaw == null || currentValueRaw === '' ? 0 : Number(currentValueRaw);
+  if (!Number.isFinite(currentValue)) {
+    throw new Error('Clients.ContractValue must contain a finite number.');
+  }
+
+  const currentComponents = parseActiveComponents_(projectRecord.row[activeComponentsColumn]);
+  if (currentComponents.includes(serviceId)) {
+    return {
+      success: true,
+      alreadyAttached: true,
+      updatedValue: currentValue,
+      activeComponents: currentComponents,
+      tasksCreated: 0,
+      tasksFailed: 0
+    };
+  }
+
+  let taskListId = null;
+  if (taskTitles.length > 0) {
+    if (typeof Tasks === 'undefined') {
+      throw new Error('Google Tasks is unavailable; no service data was changed.');
+    }
+    const taskLists = Tasks.Tasklists.list().getItems() || [];
+    if (taskLists.length === 0 || !taskLists[0].getId()) {
+      throw new Error('No Google Tasks list is available; no service data was changed.');
+    }
+    taskListId = taskLists[0].getId();
+  }
+
+  const updatedValue = currentValue + priceDelta;
+  const updatedComponents = [...currentComponents, serviceId];
+  const projectCell = projectsSheet.getRange(projectRecord.sheetRow, activeComponentsColumn + 1);
+  const clientCell = clientsSheet.getRange(clientRecord.sheetRow, contractValueColumn + 1);
+  const previousComponents = projectRecord.row[activeComponentsColumn] || '';
+  let projectWriteAttempted = false;
+  try {
+    projectWriteAttempted = true;
+    projectCell.setValue(updatedComponents.join(','));
+    clientCell.setValue(updatedValue);
+  } catch (writeError) {
+    if (projectWriteAttempted) {
+      try {
+        projectCell.setValue(previousComponents);
+      } catch (rollbackError) {
+        console.error('Service attachment rollback failed; inspect Master Control before retrying.', rollbackError);
+        throw createRouterError_(
+          'Service attachment could not be completed or rolled back; inspect Master Control before retrying.',
+          'PARTIAL_SERVICE_WRITE',
+          500
+        );
+      }
+    }
+    throw writeError;
+  }
+
+  let tasksCreated = 0;
+  let tasksFailed = 0;
+  if (taskListId) {
+    taskTitles.forEach(taskTitle => {
+      try {
+        Tasks.Tasks.insert({ title: `[${serviceId}] ${taskTitle.trim()}` }, taskListId);
+        tasksCreated += 1;
+      } catch (taskError) {
+        tasksFailed += 1;
+        console.error(`Google Tasks insertion failed for service ${serviceId}.`, taskError);
+      }
+    });
+  }
+
+  return {
+    success: true,
+    alreadyAttached: false,
+    updatedValue,
+    activeComponents: updatedComponents,
+    tasksCreated,
+    tasksFailed
+  };
+}
+
+function parseActiveComponents_(value) {
+  if (Array.isArray(value)) {
+    return value.map(component => String(component).trim()).filter(Boolean);
+  }
+  const text = String(value == null ? '' : value).trim();
+  if (!text) return [];
+  if (text.charAt(0) === '[') {
+    let parsed;
+    try {
+      parsed = JSON.parse(text);
+    } catch {
+      throw new Error('Projects.ActiveComponents contains invalid JSON.');
+    }
+    if (!Array.isArray(parsed)) {
+      throw new Error('Projects.ActiveComponents must be a JSON array or comma-separated list.');
+    }
+    return parsed.map(component => String(component).trim()).filter(Boolean);
+  }
+  return text.split(',').map(component => component.trim()).filter(Boolean);
+}

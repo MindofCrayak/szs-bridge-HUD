@@ -6,6 +6,7 @@ import { ClientDossierBay } from './ClientDossierBay';
 import { MacroPadBay } from './MacroPadBay';
 import { CalendarMeetingEvent, CalendarSource } from '../CalendarConnectorModal';
 import { PendingProposal } from '../../ecs/proposals';
+import type { PendingAgentDispatch } from '../../ecs/agentDispatch';
 
 interface BottomConsoleChassisProps {
   selectedClient: ClientRecord | null;
@@ -20,6 +21,8 @@ interface BottomConsoleChassisProps {
   onOpenFeedConfig?: () => void;
   context?: import('../../types').ViewportContext;
   onProposal?: (proposal: PendingProposal) => void;
+  pendingAgentDispatch?: PendingAgentDispatch | null;
+  onAgentDispatchHandled?: (dispatchId: number) => void;
 }
 
 type BayId = 'calendar' | 'alfred' | 'dossier' | 'macropad';
@@ -37,6 +40,8 @@ export const BottomConsoleChassis: React.FC<BottomConsoleChassisProps> = ({
   onOpenFeedConfig,
   context = 'GLOBAL',
   onProposal,
+  pendingAgentDispatch,
+  onAgentDispatchHandled,
 }) => {
   // Pinned state persisted in localStorage
   const [pinnedBays, setPinnedBays] = useState<Record<BayId, boolean>>(() => {
@@ -152,7 +157,7 @@ export const BottomConsoleChassis: React.FC<BottomConsoleChassisProps> = ({
   }, []);
 
   const isExpanded = (bay: BayId) => {
-    if (bay === 'alfred' && isAlfredActive) return true;
+    if (bay === 'alfred' && (isAlfredActive || pendingAgentDispatch)) return true;
     return Boolean(pinnedBays[bay] || hoveredBays[bay]);
   };
 
@@ -247,6 +252,8 @@ export const BottomConsoleChassis: React.FC<BottomConsoleChassisProps> = ({
                 onUpdateClient={onUpdateClient}
                 onLogTerminal={onLogTerminal}
                 onProposal={onProposal}
+                pendingAgentDispatch={pendingAgentDispatch}
+                onAgentDispatchHandled={onAgentDispatchHandled}
               />
             </div>
           </div>

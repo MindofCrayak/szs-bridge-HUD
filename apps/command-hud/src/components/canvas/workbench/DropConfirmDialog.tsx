@@ -4,12 +4,14 @@ import { AlertTriangle, ShieldAlert } from 'lucide-react';
 
 interface DropConfirmDialogProps {
   isOpen: boolean;
-  onConfirm: () => void;
+  onConfirm: () => void | Promise<void>;
   onCancel: () => void;
   serviceName: string;
   priceDelta: number;
   currentValue: number;
   targetClientName: string;
+  isSubmitting?: boolean;
+  errorMessage?: string | null;
 }
 
 export const DropConfirmDialog: React.FC<DropConfirmDialogProps> = ({
@@ -20,6 +22,8 @@ export const DropConfirmDialog: React.FC<DropConfirmDialogProps> = ({
   priceDelta,
   currentValue,
   targetClientName,
+  isSubmitting = false,
+  errorMessage = null,
 }) => {
   const dialogRef = useRef<HTMLDivElement>(null);
   const previouslyFocusedElement = useRef<HTMLElement | null>(null);
@@ -40,7 +44,7 @@ export const DropConfirmDialog: React.FC<DropConfirmDialogProps> = ({
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        onCancel();
+        if (!isSubmitting) onCancel();
         return;
       }
 
@@ -76,7 +80,7 @@ export const DropConfirmDialog: React.FC<DropConfirmDialogProps> = ({
         } catch {}
       }
     };
-  }, [isOpen, onCancel]);
+  }, [isOpen, isSubmitting, onCancel]);
 
   if (!isOpen) return null;
 
@@ -145,11 +149,18 @@ export const DropConfirmDialog: React.FC<DropConfirmDialogProps> = ({
           </span>
         </div>
 
+        {errorMessage && (
+          <div role="alert" className="mb-4 rounded border border-red-500/50 bg-red-950/30 p-2 text-xs text-red-200">
+            Master Control did not confirm this attachment: {errorMessage}
+          </div>
+        )}
+
         {/* Action Buttons */}
         <div className="flex gap-2">
           <button
             type="button"
             onClick={onCancel}
+            disabled={isSubmitting}
             className="flex-1 py-2 rounded-lg border border-[#086375] bg-[#020500] hover:bg-[#086375]/30 text-xs font-bold transition-colors cursor-pointer text-[#DDFBD0]/80"
           >
             ABORT DROP
@@ -157,9 +168,11 @@ export const DropConfirmDialog: React.FC<DropConfirmDialogProps> = ({
           <button
             type="button"
             onClick={onConfirm}
+            disabled={isSubmitting}
+            aria-busy={isSubmitting}
             className="flex-1 py-2 rounded-lg border border-[#FE5F00] bg-[#FE5F00] hover:bg-[#FE5F00]/80 text-black text-xs font-bold transition-all shadow-[0_0_15px_rgba(254,95,0,0.5)] cursor-pointer"
           >
-            AUTHORIZE MUTATION
+            {isSubmitting ? 'SYNCING...' : 'AUTHORIZE MUTATION'}
           </button>
         </div>
       </div>

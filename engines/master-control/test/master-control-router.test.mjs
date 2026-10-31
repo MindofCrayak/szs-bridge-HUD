@@ -33,9 +33,11 @@ function createHarness({
   financeClientId = 'CLIENT-01',
   authorizedUsers = 'operator@example.com',
   overrideUsers = '',
+  masterControlSheetId = '',
   includeAlertSheet = true,
   auditFails = false,
 } = {}) {
+  context.Tasks = undefined;
   const clientRow = [...client];
   const alertRows = [];
   const calls = [];
@@ -82,6 +84,7 @@ function createHarness({
       getProperty: (name) => ({
         AUTHORIZED_USER_EMAILS: authorizedUsers,
         PIPELINE_OVERRIDE_EMAILS: overrideUsers,
+        MASTER_CONTROL_SHEET_ID: masterControlSheetId,
       })[name] || '',
     }),
   };
@@ -102,6 +105,110 @@ function createHarness({
     }),
   };
   return { clientRow, alertRows, calls, lockState };
+}
+
+function createServiceHarness({
+  clientValue = 12000,
+  activeComponents = '',
+  includeActiveComponents = true,
+  projectRows,
+  authorizedUsers = 'operator@example.com',
+  tasksAvailable = true,
+  masterControlSheetId = '',
+} = {}) {
+  const harness = createHarness({ authorizedUsers, masterControlSheetId });
+  const clientHeaders = [
+    'ClientID', 'First_Name', 'Last_Name', 'Company_Name', 'ContactEmail',
+    'GoogleGroupEmail', 'Archetype', 'AccountPhase', 'ActiveRoadblock',
+    'ContractValue', 'DepositPaid', 'CurrentMilestone', 'CompletedMilestones',
+    'TotalMilestones', 'DriveFolderUrl', 'ChatSpaceUrl', 'NotesDocUrl',
+    'MSA_DocID', 'Tech_Stack', 'MCC_Subscriber_ID', 'Oracle_Baseline_ID',
+  ];
+  const projectHeaders = [
+    'ProjectID', 'ClientID', 'ProjectName', 'SprintStage', 'AssignedRateTier',
+    'SOW_DocID', 'Project_Brief_DocID', 'Project_Outline_DocID',
+    'COMS_Sheet_URL', 'Google_Tasklist_ID', 'MeetingNotes_DriveFolderID',
+    'ChatSpaceURL', 'ChatSpace_Internal_URL', 'Est_Hours', 'Actual_Hours',
+    'ParentProjectID', 'AddendumRef',
+  ];
+  if (includeActiveComponents) projectHeaders.push('ActiveComponents');
+
+  const clientRow = [
+    'CLIENT-01', 'Test', 'Operator', 'Test Client', '', '', '',
+    '02: Session Zero', '', clientValue, false, '', 0, 5, '', '', '',
+    '', '', '', '',
+  ];
+  const projectRow = [
+    'PROJECT-01', 'CLIENT-01', 'Test Project', '03: Active Sprints',
+    'Tier 1', 'sow-id', 'brief-id', 'outline-id', '', '', '', '', '',
+    100, 0, '', '',
+  ];
+  if (includeActiveComponents) projectRow.push(activeComponents);
+
+  const rows = {
+    clients: [clientRow],
+    projects: projectRows || [projectRow],
+  };
+  const writes = [];
+  const makeSheet = (name, headers) => ({
+    getDataRange: () => ({ getValues: () => [headers, ...rows[name]] }),
+    getRange: (row, column) => ({
+      setValue: value => {
+        writes.push({ sheet: name, row, column, value });
+        rows[name][row - 2][column - 1] = value;
+      },
+    }),
+  });
+  const clientsSheet = makeSheet('clients', clientHeaders);
+  const projectsSheet = makeSheet('projects', projectHeaders);
+  const spreadsheet = {
+    getSheetByName: name => ({
+      Clients: clientsSheet,
+      Projects: projectsSheet,
+    })[name] || null,
+  };
+  const openedSpreadsheetIds = [];
+  let activeSpreadsheetLookups = 0;
+  context.SpreadsheetApp = {
+    getActiveSpreadsheet: () => {
+      activeSpreadsheetLookups += 1;
+      return spreadsheet;
+    },
+    openById: id => {
+      openedSpreadsheetIds.push(id);
+      return spreadsheet;
+    },
+  };
+
+  const insertedTasks = [];
+  let taskListLookups = 0;
+  if (tasksAvailable) {
+    context.Tasks = {
+      Tasklists: {
+        list: () => ({
+          getItems: () => {
+            taskListLookups += 1;
+            return [{ getId: () => 'test-task-list' }];
+          },
+        }),
+      },
+      Tasks: {
+        insert: (task, listId) => insertedTasks.push({ task, listId }),
+      },
+    };
+  }
+
+  return {
+    ...harness,
+    clientRow,
+    projectRow,
+    rows,
+    writes,
+    insertedTasks,
+    openedSpreadsheetIds,
+    getActiveSpreadsheetLookups: () => activeSpreadsheetLookups,
+    getTaskListLookups: () => taskListLookups,
+  };
 }
 
 test('persists a permitted stage change while holding and releasing the mutation lock', () => {
@@ -222,6 +329,155 @@ test('rejects unauthenticated users before acquiring the lock', () => {
   assert.equal(harness.clientRow[1], '02: Session Zero');
 });
 
+test('persists service components and contract value by header while holding the lock', () => {
+  const harness = createServiceHarness();
+  const result = context.attachClientServiceNode({
+    clientId: 'CLIENT-01',
+    serviceId: 'comp_mcc_engine',
+    priceDelta: 3200,
+    tasks: ['Create the welcome sequence', 'Configure follow-up automation'],
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(result.alreadyAttached, false);
+  assert.equal(result.updatedValue, 15200);
+  assert.deepEqual(Array.from(result.activeComponents), ['comp_mcc_engine']);
+  assert.equal(result.tasksCreated, 2);
+  assert.equal(result.tasksFailed, 0);
+  assert.equal(harness.clientRow[9], 15200);
+  assert.equal(harness.projectRow[4], 'Tier 1');
+  assert.equal(harness.projectRow[7], 'outline-id');
+  assert.equal(harness.projectRow[17], 'comp_mcc_engine');
+  assert.deepEqual(
+    harness.insertedTasks.map(({ task, listId }) => [task.title, listId]),
+    [
+      ['[comp_mcc_engine] Create the welcome sequence', 'test-task-list'],
+      ['[comp_mcc_engine] Configure follow-up automation', 'test-task-list'],
+    ],
+  );
+  assert.equal(harness.lockState.waits, 1);
+  assert.equal(harness.lockState.releases, 1);
+});
+
+test('configured Master Control sheet ID takes precedence over the active spreadsheet', () => {
+  const harness = createServiceHarness({ masterControlSheetId: 'disposable-master-control' });
+  const result = context.attachClientServiceNode({
+    clientId: 'CLIENT-01',
+    serviceId: 'comp_mcc_engine',
+    priceDelta: 3200,
+    tasks: [],
+  });
+
+  assert.equal(result.updatedValue, 15200);
+  assert.deepEqual(harness.openedSpreadsheetIds, ['disposable-master-control']);
+  assert.equal(harness.getActiveSpreadsheetLookups(), 0);
+});
+
+test('service attachment through doPost does not acquire a nested lock', () => {
+  const harness = createServiceHarness();
+  const response = context.doPost({
+    postData: {
+      contents: JSON.stringify({
+        action: 'attachClientServiceNode',
+        clientId: 'CLIENT-01',
+        serviceId: 'comp_mcc_engine',
+        priceDelta: 3200,
+        tasks: [],
+      }),
+    },
+  });
+
+  assert.equal(JSON.parse(response.text).status, 200);
+  assert.equal(harness.lockState.waits, 1);
+  assert.equal(harness.lockState.releases, 1);
+});
+
+test('retries do not charge or create tasks for an already attached service', () => {
+  const harness = createServiceHarness({
+    clientValue: 15200,
+    activeComponents: 'comp_mcc_engine',
+  });
+  const result = context.attachClientServiceNode({
+    clientId: 'CLIENT-01',
+    serviceId: 'comp_mcc_engine',
+    priceDelta: 3200,
+    tasks: ['Create the welcome sequence'],
+  });
+
+  assert.equal(result.success, true);
+  assert.equal(result.alreadyAttached, true);
+  assert.equal(result.updatedValue, 15200);
+  assert.equal(harness.clientRow[9], 15200);
+  assert.equal(harness.writes.length, 0);
+  assert.equal(harness.insertedTasks.length, 0);
+  assert.equal(harness.getTaskListLookups(), 0);
+  assert.equal(harness.lockState.releases, 1);
+});
+
+test('service attachment fails closed when the schema is missing ActiveComponents', () => {
+  const harness = createServiceHarness({ includeActiveComponents: false });
+  assert.throws(
+    () => context.attachClientServiceNode({
+      clientId: 'CLIENT-01',
+      serviceId: 'comp_mcc_engine',
+      priceDelta: 3200,
+      tasks: [],
+    }),
+    /Projects\.ActiveComponents are required/,
+  );
+  assert.equal(harness.clientRow[9], 12000);
+  assert.equal(harness.projectRow[4], 'Tier 1');
+  assert.equal(harness.projectRow[7], 'outline-id');
+  assert.equal(harness.writes.length, 0);
+  assert.equal(harness.lockState.releases, 1);
+});
+
+test('service attachment rejects ambiguous project rows without writing', () => {
+  const projectHeaders = [
+    'ProjectID', 'ClientID', 'ProjectName', 'SprintStage', 'AssignedRateTier',
+    'SOW_DocID', 'Project_Brief_DocID', 'Project_Outline_DocID',
+    'COMS_Sheet_URL', 'Google_Tasklist_ID', 'MeetingNotes_DriveFolderID',
+    'ChatSpaceURL', 'ChatSpace_Internal_URL', 'Est_Hours', 'Actual_Hours',
+    'ParentProjectID', 'AddendumRef', 'ActiveComponents',
+  ];
+  const firstProject = [
+    'PROJECT-01', 'CLIENT-01', 'Project One', '03: Active Sprints',
+    'Tier 1', '', '', 'outline-one', '', '', '', '', '', 100, 0, '', '', '',
+  ];
+  const secondProject = [
+    'PROJECT-02', 'CLIENT-01', 'Project Two', '03: Active Sprints',
+    'Tier 2', '', '', 'outline-two', '', '', '', '', '', 100, 0, '', '', '',
+  ];
+  const harness = createServiceHarness({ projectRows: [firstProject, secondProject] });
+
+  assert.throws(
+    () => context.attachClientServiceNode({
+      clientId: 'CLIENT-01',
+      serviceId: 'comp_mcc_engine',
+      priceDelta: 3200,
+      tasks: [],
+    }),
+    error => error.code === 'AMBIGUOUS_PROJECT' && error.statusCode === 409,
+  );
+  assert.equal(harness.clientRow[9], 12000);
+  assert.equal(harness.writes.length, 0);
+});
+
+test('service attachment rejects unauthorized direct executions before locking', () => {
+  const harness = createServiceHarness({ authorizedUsers: 'different@example.com' });
+  assert.throws(
+    () => context.attachClientServiceNode({
+      clientId: 'CLIENT-01',
+      serviceId: 'comp_mcc_engine',
+      priceDelta: 3200,
+      tasks: [],
+    }),
+    error => error.code === 'UNAUTHORIZED',
+  );
+  assert.equal(harness.lockState.waits, 0);
+  assert.equal(harness.writes.length, 0);
+});
+
 test('redacts sensitive values from alert text exposed to the HUD', () => {
   const message = context.sanitizeAlertText_(
     'token=example-token https://drive.google.com/drive/folders/example-id abcdefghijklmnopqrstuvwxyz123',
@@ -237,7 +493,7 @@ test('HUD state projects only approved fields and joins project compliance IDs',
   ];
   const projectHeaders = [
     'ClientID', 'SOW_DocID', 'MeetingNotes_DriveFolderID',
-    'ProjectFolderID', 'CaseFileJsonUrl',
+    'ProjectFolderID', 'CaseFileJsonUrl', 'ActiveComponents',
   ];
   const alertHeaders = [
     'Alert_ID', 'Timestamp', 'ClientID', 'Priority', 'Category',
@@ -254,7 +510,7 @@ test('HUD state projects only approved fields and joins project compliance IDs',
   ]);
   const projectsSheet = table(projectHeaders, [
     'CLIENT-01', 'sow-id', 'notes-id', 'project-folder-id',
-    'https://internal.example/project-case.json',
+    'https://internal.example/project-case.json', 'comp_mcc_engine',
   ]);
   const alertsSheet = table(alertHeaders, [
     'ALT-1', '2026-01-01T00:00:00.000Z', 'CLIENT-01', 'INFO', 'Test',
@@ -275,6 +531,7 @@ test('HUD state projects only approved fields and joins project compliance IDs',
   assert.equal(state.clients[0].SOW_DocID, 'sow-id');
   assert.equal(state.clients[0].MeetingNotes_DriveFolderID, 'notes-id');
   assert.equal(state.clients[0].ProjectFolderID, 'project-folder-id');
+  assert.equal(state.clients[0].ActiveComponents, 'comp_mcc_engine');
   assert.equal('CaseFileJsonUrl' in state.clients[0], false);
   assert.equal('Oracle_Baseline_ID' in state.clients[0], false);
   assert.equal('projects' in state, false);

@@ -10,6 +10,14 @@ type AlfredContext = {
   roadblock?: string;
   depositStatus?: string;
   installedComponents?: string[];
+  node?: {
+    id: string;
+    label: string;
+    type: 'agent' | 'component' | 'core';
+    department: string;
+    status: string;
+    connectedWireIds: string[];
+  };
 };
 
 const SYSTEM_INSTRUCTION = `You are Alfred, chief of staff and tactical steward for Session Zero Solutions.
@@ -26,6 +34,9 @@ const URL_PATTERN = /\bhttps?:\/\/\S+/gi;
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const isNodeType = (value: unknown): value is 'agent' | 'component' | 'core' =>
+  value === 'agent' || value === 'component' || value === 'core';
 
 function redactText(value: unknown, limit: number): string | undefined {
   if (typeof value !== 'string') return undefined;
@@ -44,6 +55,28 @@ function normalizeContext(value: unknown): AlfredContext {
         .filter((item): item is string => Boolean(item))
         .slice(0, 20)
     : undefined;
+  const rawNode = isRecord(value.node) ? value.node : undefined;
+  const nodeType = rawNode?.type;
+  const node = rawNode
+    && typeof rawNode.id === 'string'
+    && typeof rawNode.label === 'string'
+    && isNodeType(nodeType)
+    && typeof rawNode.department === 'string'
+    && typeof rawNode.status === 'string'
+    ? {
+        id: redactText(rawNode.id, 100) || '',
+        label: redactText(rawNode.label, 160) || '',
+        type: nodeType,
+        department: redactText(rawNode.department, 40) || '',
+        status: redactText(rawNode.status, 60) || '',
+        connectedWireIds: Array.isArray(rawNode.connectedWireIds)
+          ? rawNode.connectedWireIds
+              .map((item) => redactText(item, 80))
+              .filter((item): item is string => Boolean(item))
+              .slice(0, 12)
+          : [],
+      }
+    : undefined;
 
   return {
     name: redactText(value.name, 160),
@@ -53,6 +86,7 @@ function normalizeContext(value: unknown): AlfredContext {
     roadblock: redactText(value.roadblock, 500),
     depositStatus: redactText(value.depositStatus, 60),
     installedComponents,
+    node,
   };
 }
 
@@ -132,7 +166,13 @@ export async function handleAlfredRequest(req: IncomingMessage, res: ServerRespo
   }
 
   const safeContext = normalizeContext(body.context);
-  const contextText = JSON.stringify(safeContext).slice(0, 4_000);
+  while (safeContext.node?.connectedWireIds.length && JSON.stringify(safeContext).length > 4_000) {
+    safeContext.node.connectedWireIds.pop();
+  }
+  while (safeContext.installedComponents?.length && JSON.stringify(safeContext).length > 4_000) {
+    safeContext.installedComponents.pop();
+  }
+  const contextText = JSON.stringify(safeContext);
   const controller = new AbortController();
   const abortUpstream = () => {
     if (!res.writableEnded) controller.abort();

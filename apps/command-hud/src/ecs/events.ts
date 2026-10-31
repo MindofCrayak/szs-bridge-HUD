@@ -142,6 +142,7 @@ export function publishHudEvent(
 
     for (const rule of rules) {
       if (!matchesRule(rule, event, link, getDepartment)) continue;
+      result.activeLinkIds.push(link.id);
       if (rule.effect === 'unblock') {
         result.unblockedLinkIds.push(link.id);
         continue;
@@ -160,7 +161,6 @@ export function publishHudEvent(
         clientFacing: Boolean(rule.clientFacing),
       });
       result.proposals.push(proposal);
-      result.activeLinkIds.push(link.id);
     }
   }
 

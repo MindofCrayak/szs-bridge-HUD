@@ -21,7 +21,7 @@ export const GoogleSignIn: React.FC<GoogleSignInProps> = ({
     flow: 'implicit',
     scope: MASTER_CONTROL_OAUTH_SCOPES.join(' '),
     onSuccess: (token) => {
-      console.log('✅ Google OAuth Success:', token);
+      console.info('Google OAuth sign-in succeeded.');
       onToken(token);
     },
     onError: (response) => {

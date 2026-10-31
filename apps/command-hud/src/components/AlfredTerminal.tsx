@@ -1,10 +1,13 @@
 import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { ClientUnit } from '../types';
 import { PendingProposal, parseAlfredProposals } from '../ecs/proposals';
+import type { PendingAgentDispatch, AlfredNodeContext } from '../ecs/agentDispatch';
 
 interface AlfredTerminalProps {
   activeUnit: ClientUnit | null;
   onProposal?: (proposal: PendingProposal) => void;
+  pendingAgentDispatch?: PendingAgentDispatch | null;
+  onAgentDispatchHandled?: (dispatchId: number) => void;
 }
 
 export interface AlfredTerminalHandle {
@@ -24,12 +27,18 @@ interface AlfredContext {
   roadblock?: string;
   depositStatus?: string;
   installedComponents?: string[];
+  node?: AlfredNodeContext;
 }
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null && !Array.isArray(value);
 
-export const AlfredTerminal = forwardRef<AlfredTerminalHandle, AlfredTerminalProps>(({ activeUnit, onProposal }, ref) => {
+export const AlfredTerminal = forwardRef<AlfredTerminalHandle, AlfredTerminalProps>(({
+  activeUnit,
+  onProposal,
+  pendingAgentDispatch,
+  onAgentDispatchHandled,
+}, ref) => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -39,11 +48,16 @@ export const AlfredTerminal = forwardRef<AlfredTerminalHandle, AlfredTerminalPro
   const pendingExternalCommandsRef = useRef<string[]>([]);
   const activeUnitIdRef = useRef<string | undefined>(activeUnit?.ClientID ?? activeUnit?.id);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const dispatchContextRef = useRef<AlfredNodeContext | null>(null);
+  const handledDispatchIdRef = useRef<number | null>(null);
+  const dispatchWasPendingAtMountRef = useRef(Boolean(pendingAgentDispatch));
   const isTypingRef = useRef(false);
   const abortControllerRef = useRef<AbortController | null>(null);
   activeUnitIdRef.current = activeUnit?.ClientID ?? activeUnit?.id;
 
   useEffect(() => {
+    if (dispatchWasPendingAtMountRef.current) return;
     const controller = new AbortController();
     void fetch('/api/alfred/status', { signal: controller.signal })
       .then(async (response) => {
@@ -55,7 +69,7 @@ export const AlfredTerminal = forwardRef<AlfredTerminalHandle, AlfredTerminalPro
       })
       .catch((statusError: unknown) => {
         if (controller.signal.aborted) return;
-        setIsProxyConfigured(false);
+        setIsProxyConfigured(null);
         setError(statusError instanceof Error ? statusError.message : 'Alfred proxy status is unavailable.');
       });
     return () => controller.abort();
@@ -64,6 +78,16 @@ export const AlfredTerminal = forwardRef<AlfredTerminalHandle, AlfredTerminalPro
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' });
   }, [messages, isTyping]);
+
+  useEffect(() => {
+    if (!pendingAgentDispatch || handledDispatchIdRef.current === pendingAgentDispatch.id) return;
+    handledDispatchIdRef.current = pendingAgentDispatch.id;
+    dispatchContextRef.current = pendingAgentDispatch.nodeContext;
+    setInput(pendingAgentDispatch.prompt);
+    setError(null);
+    requestAnimationFrame(() => inputRef.current?.focus());
+    onAgentDispatchHandled?.(pendingAgentDispatch.id);
+  }, [pendingAgentDispatch, onAgentDispatchHandled]);
 
   useEffect(() => {
     abortControllerRef.current?.abort();
@@ -102,6 +126,8 @@ export const AlfredTerminal = forwardRef<AlfredTerminalHandle, AlfredTerminalPro
           installedComponents: activeUnit.activeComponents ?? [],
         }
       : {};
+    context.node = dispatchContextRef.current || undefined;
+    dispatchContextRef.current = null;
 
     try {
       if (isProxyConfigured === false) {
@@ -212,6 +238,7 @@ export const AlfredTerminal = forwardRef<AlfredTerminalHandle, AlfredTerminalPro
 
       <form onSubmit={handleSubmit} className="sticky bottom-0 mt-2 flex gap-2 border-t border-[#086375]/60 bg-[#020500] pt-2">
         <input
+          ref={inputRef}
           type="text"
           value={input}
           onChange={(event) => setInput(event.target.value)}

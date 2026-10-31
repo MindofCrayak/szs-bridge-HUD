@@ -31,12 +31,25 @@ interface MenuLevelProps {
 const MENU_WIDTH = 232;
 const ITEM_HEIGHT = 34;
 
-const placeMenu = (x: number, y: number, itemCount: number) => ({
-  left: Math.max(8, Math.min(x, window.innerWidth - MENU_WIDTH - 8)),
-  top: Math.max(8, Math.min(y, window.innerHeight - Math.max(ITEM_HEIGHT, itemCount * ITEM_HEIGHT) - 8)),
-});
+const getMenuWidth = () => Math.min(MENU_WIDTH, Math.max(120, (window.innerWidth - 24) / 2));
+
+const placeMenu = (x: number, y: number, itemCount: number) => {
+  const menuWidth = getMenuWidth();
+  const maxLeft = window.innerWidth - menuWidth - 8;
+  let left = Math.max(8, Math.min(x, maxLeft));
+  if (window.innerWidth < MENU_WIDTH * 2 + 24
+    && left + menuWidth * 2 + 8 > window.innerWidth
+    && left - menuWidth - 8 < 0) {
+    left = x < window.innerWidth / 2 ? 8 : maxLeft;
+  }
+  return {
+    left,
+    top: Math.max(8, Math.min(y, window.innerHeight - Math.max(ITEM_HEIGHT, itemCount * ITEM_HEIGHT) - 8)),
+  };
+};
 
 const MenuLevel: React.FC<MenuLevelProps> = ({ items, root = false, onClose, onBack }) => {
+  const menuWidth = getMenuWidth();
   const [openSubmenu, setOpenSubmenu] = useState<string | null>(null);
   const [submenuPlacement, setSubmenuPlacement] = useState<{ side: 'left' | 'right'; top: number }>({
     side: 'right',
@@ -61,7 +74,7 @@ const MenuLevel: React.FC<MenuLevelProps> = ({ items, root = false, onClose, onB
     const submenuIndex = items.findIndex((item) => item.id === itemId);
     const submenuHeight = (items[submenuIndex]?.submenu?.length || 1) * ITEM_HEIGHT;
     setSubmenuPlacement({
-      side: rect.right + MENU_WIDTH + 8 > window.innerWidth ? 'left' : 'right',
+      side: rect.right + menuWidth + 8 > window.innerWidth ? 'left' : 'right',
       top: Math.min(0, window.innerHeight - rect.top - submenuHeight - 8),
     });
     setOpenSubmenu(itemId);
@@ -110,7 +123,8 @@ const MenuLevel: React.FC<MenuLevelProps> = ({ items, root = false, onClose, onB
       role="menu"
       tabIndex={-1}
       onKeyDown={handleKeyDown}
-      className="relative min-w-[232px] rounded border border-[#086375] bg-[#020500] p-1 text-xs font-mono text-[#DDFBD0] shadow-xl outline-none"
+      style={{ width: menuWidth }}
+      className="relative rounded border border-[#086375] bg-[#020500] p-1 text-xs font-mono text-[#DDFBD0] shadow-xl outline-none"
     >
       {items.map((item, index) => {
         if (item.separator) return <div key={item.id} role="separator" className="my-1 border-t border-[#086375]/50" />;

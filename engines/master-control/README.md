@@ -17,16 +17,30 @@ finance records.
 - Internal service functions end in `_` so they are not API-executable
   entrypoints. The legacy lead-graduation and payment actions remain disabled.
 - The manifest is restricted to authenticated domain users and executes as the
-  accessing user. The existing deployed project has not been updated or
-  verified; this local manifest does not change a live deployment.
+  accessing user. The verified version 25 deployment targets the
+  owner-confirmed disposable copy, not a production deployment. This local
+  manifest does not change a live deployment.
 - `reference/` contains tagged legacy and migration sources for review only.
   `.claspignore` excludes it, along with tests, from uploads. Do not run the
   migration source: it rewrites schemas, including Oracle.
 
-No deployment, trigger installation, live spreadsheet mutation, or Drive
-provisioning has been performed. Configure only approved identifiers and
-allowlists in Script Properties. Rotate credentials exposed in the tagged
-source before production use.
+Version 25 of the configured disposable Apps Script project contains the
+scoped service-attachment handler fix, prioritizes the configured
+`MASTER_CONTROL_SHEET_ID`, and enables the Tasks advanced service with its
+required OAuth scope. That Script Property is verified to point to the
+owner-confirmed disposable copy. The approved
+`Projects.ActiveComponents` header was added and saved. One authorized MCC
+attachment attempt against version 22 was rejected before any sheet write or
+Google Tasks insert because the handler could not find one or more required
+headers. A fresh authenticated read against version 23 showed C-107 at `$0`
+with no active modules; attachment verification remains pending. A second
+attempt was rejected before writes because version 23 did not enable the Apps
+Script Tasks advanced service. Version 25 has since been pulled back and
+verified to include the service and OAuth scope. The HUD now requests that
+scope; the signed-in user must re-consent before the authorized retry. No
+service attachment, contract update, or task insert has been confirmed.
+Configure only approved identifiers and allowlists in Script Properties.
+Rotate credentials exposed in the tagged source before production use.
 
 ## Tests
 

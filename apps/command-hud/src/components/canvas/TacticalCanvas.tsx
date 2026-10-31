@@ -5,6 +5,7 @@ import { SlimVitalsCard } from './SlimVitalsCard';
 import { ProjectWorkbenchView } from './ProjectWorkbenchView';
 import { CanvasFloatingToolbar } from './CanvasFloatingToolbar';
 import { WirePanelActions, WirePanelSnapshot } from '../../ecs/links';
+import type { AgentCallsign, AlfredNodeContext } from '../../ecs/agentDispatch';
 
 interface TacticalCanvasProps {
   clients: ClientRecord[];
@@ -21,8 +22,10 @@ interface TacticalCanvasProps {
   interactionMode?: 'drag' | 'lock' | 'edit';
   showNonStructural?: boolean;
   activeWireIds?: string[];
+  doneNodeIds?: string[];
   onWirePanelChange?: (snapshot: WirePanelSnapshot | null) => void;
   onWirePanelActionsChange?: (actions: WirePanelActions | null) => void;
+  onDispatchAgent?: (agent: AgentCallsign, nodeContext: AlfredNodeContext) => void;
 }
 
 interface MacroZone {
@@ -58,8 +61,10 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
   interactionMode: propInteractionMode = 'drag',
   showNonStructural: propShowNonStructural = true,
   activeWireIds = [],
+  doneNodeIds = [],
   onWirePanelChange,
   onWirePanelActionsChange,
+  onDispatchAgent,
 }) => {
   const {
     viewportRef,
@@ -272,9 +277,44 @@ export const TacticalCanvas: React.FC<TacticalCanvasProps> = ({
             interactionMode={interactionMode}
             showNonStructural={showNonStructural}
             activeWireIds={activeWireIds}
+            doneNodeIds={doneNodeIds}
             onWirePanelChange={onWirePanelChange}
             onWirePanelActionsChange={onWirePanelActionsChange}
+            onDispatchAgent={onDispatchAgent}
             onTriggerAction={(action, payload) => {
+              if (action === 'FOCUS_NODE' && typeof payload?.x === 'number' && typeof payload?.y === 'number') {
+                const viewport = viewportRef.current?.getBoundingClientRect();
+                if (!viewport) return;
+                setPan({
+                  x: Math.round(viewport.width / 2 - (viewport.width / 2 + payload.x) * scale),
+                  y: Math.round(viewport.height / 2 - (viewport.height / 2 + payload.y) * scale),
+                });
+                return;
+              }
+              if (action === 'FIT_WORKBENCH' && typeof payload?.left === 'number'
+                && typeof payload?.top === 'number' && typeof payload?.right === 'number'
+                && typeof payload?.bottom === 'number') {
+                const viewport = viewportRef.current?.getBoundingClientRect();
+                if (!viewport) return;
+                const width = Math.max(1, payload.right - payload.left);
+                const height = Math.max(1, payload.bottom - payload.top);
+                const fitScale = Math.min(
+                  3,
+                  Math.max(0.2, Math.min((viewport.width - 96) / width, (viewport.height - 96) / height)),
+                );
+                const centerX = (payload.left + payload.right) / 2;
+                const centerY = (payload.top + payload.bottom) / 2;
+                setScale(fitScale);
+                setPan({
+                  x: Math.round(viewport.width / 2 - (viewport.width / 2 + centerX) * fitScale),
+                  y: Math.round(viewport.height / 2 - (viewport.height / 2 + centerY) * fitScale),
+                });
+                return;
+              }
+              if (action === 'TOGGLE_SATELLITES') {
+                setShowNonStructural((visible) => !visible);
+                return;
+              }
               if (action === 'OPEN_TASKS' || action === 'DRAFT_INVOICE') {
                 onOpenContextMenu(window.innerWidth / 2, window.innerHeight / 2, payload?.client || workbenchClient);
               }

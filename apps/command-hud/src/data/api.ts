@@ -12,12 +12,24 @@ interface AppsScriptExecutionResponse {
   };
 }
 
+export type ServiceAttachmentResult =
+  | { status: 'offline' }
+  | {
+      status: 'persisted';
+      updatedValue: number;
+      activeComponents: string[];
+      tasksCreated: number;
+      tasksFailed: number;
+      alreadyAttached: boolean;
+    };
+
 export const MASTER_CONTROL_OAUTH_SCOPES = [
   'https://www.googleapis.com/auth/drive',
   'https://www.googleapis.com/auth/documents',
   'https://www.googleapis.com/auth/spreadsheets',
   'https://www.googleapis.com/auth/userinfo.email',
   'https://www.googleapis.com/auth/script.scriptapp',
+  'https://www.googleapis.com/auth/tasks',
 ] as const;
 
 const getAppsScriptDeploymentId = (): string => {
@@ -102,6 +114,22 @@ export function normalizeClientData(c: any): any {
   const value = Number(c.ContractValue ?? c.contractValue ?? 0);
   const id = String(c.ClientID ?? c.id ?? 'UNKNOWN').trim();
   const name = String(c.Company_Name ?? c.companyName ?? c.name ?? 'Unnamed').trim();
+  const rawComponents = c.ActiveComponents ?? c.activeComponents ?? [];
+  let activeComponents: string[];
+  if (Array.isArray(rawComponents)) {
+    activeComponents = rawComponents.map(component => String(component).trim()).filter(Boolean);
+  } else {
+    const componentText = String(rawComponents).trim();
+    if (componentText.startsWith('[')) {
+      const parsedComponents: unknown = JSON.parse(componentText);
+      if (!Array.isArray(parsedComponents)) {
+        throw new Error('Master Control returned an invalid ActiveComponents value.');
+      }
+      activeComponents = parsedComponents.map(component => String(component).trim()).filter(Boolean);
+    } else {
+      activeComponents = componentText.split(',').map(component => component.trim()).filter(Boolean);
+    }
+  }
 
   return {
     ...c,
@@ -129,6 +157,7 @@ export function normalizeClientData(c: any): any {
     ChatSpaceUrl: String(c.ChatSpaceUrl ?? c.chatSpaceUrl ?? ''),
     chatSpaceUrl: String(c.ChatSpaceUrl ?? c.chatSpaceUrl ?? ''),
     activeProjects: Array.isArray(c.activeProjects) ? c.activeProjects : [],
+    activeComponents,
     totalMilestones: Number(c.totalMilestones ?? c.MilestonesTotal ?? 4),
     completedMilestones: Number(c.completedMilestones ?? c.MilestonesDone ?? 0),
     currentMilestone: String(c.currentMilestone ?? c.Title ?? 'Active Sprint Delivery'),
@@ -175,12 +204,15 @@ export async function syncServiceToMasterControl(
   priceDelta: number,
   tasks: string[],
   accessToken?: string | null,
-): Promise<unknown> {
+): Promise<ServiceAttachmentResult> {
   if (!accessToken) {
-    console.log(`[Offline/Demo Mode] syncServiceToMasterControl: Attached ${serviceId} to ${clientId} (+$${priceDelta}) with ${tasks.length} tasks.`);
-    return { success: true, updatedValue: priceDelta, offline: true };
+    return { status: 'offline' };
   }
-  return postMasterControlAction(accessToken, {
+  if (!clientId.trim() || !serviceId.trim() || !Number.isFinite(priceDelta) || priceDelta <= 0
+      || tasks.some(task => !task.trim())) {
+    throw new Error('A valid client, service, price, and task list are required.');
+  }
+  const result = await postMasterControlAction(accessToken, {
     action: 'attachClientServiceNode',
     clientId,
     serviceId,
@@ -188,4 +220,26 @@ export async function syncServiceToMasterControl(
     tasks,
     timestamp: new Date().toISOString(),
   });
+  if (typeof result !== 'object' || result === null
+      || !('success' in result) || result.success !== true
+      || !('updatedValue' in result) || typeof result.updatedValue !== 'number'
+      || !Number.isFinite(result.updatedValue)
+      || !('activeComponents' in result) || !Array.isArray(result.activeComponents)
+      || !result.activeComponents.every(component => typeof component === 'string')
+      || !('tasksCreated' in result) || typeof result.tasksCreated !== 'number'
+      || !Number.isInteger(result.tasksCreated)
+      || !('tasksFailed' in result) || typeof result.tasksFailed !== 'number'
+      || !Number.isInteger(result.tasksFailed)
+      || !('alreadyAttached' in result) || typeof result.alreadyAttached !== 'boolean'
+      || !result.activeComponents.includes(serviceId)) {
+    throw new Error('Master Control did not confirm a complete service attachment response.');
+  }
+  return {
+    status: 'persisted',
+    updatedValue: result.updatedValue,
+    activeComponents: result.activeComponents,
+    tasksCreated: result.tasksCreated,
+    tasksFailed: result.tasksFailed,
+    alreadyAttached: result.alreadyAttached,
+  };
 }
